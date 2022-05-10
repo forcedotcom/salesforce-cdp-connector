@@ -1,7 +1,7 @@
 from setuptools import setup, find_packages
 
 setup(
-    name='salesforce-cdp-connector',
+    name='cdp-connector',
     version='1.0.0',
     packages=find_packages(include=['salesforcecdpconnector', 'salesforcecdpconnector.*']),
     url='',
