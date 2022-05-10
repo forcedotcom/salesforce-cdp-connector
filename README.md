@@ -4,6 +4,14 @@ A readonly CDP client for Python. This can be used to execute queries against CD
 
 ## Usage
 
+### Installation
+
+Install the package from Pypi using the command
+
+```
+pip install cdp-connector
+```
+
 ### Quick Start
 
 We have to create an instance of the SalesforceCDPConnection to connect to CDP.
