@@ -10,7 +10,14 @@ import base64
 import dateutil.parser
 import pyarrow
 
-from .constants import *
+from .constants import API_VERSION_V2
+from .constants import QUERY_RESPONSE_KEY_DONE
+from .constants import QUERY_RESPONSE_KEY_NEXT_BATCH_ID
+from .constants import QUERY_RESPONSE_KEY_ARROW_STREAM
+from .constants import QUERY_RESPONSE_KEY_METADATA
+from .constants import QUERY_RESPONSE_KEY_METADATA_TYPE
+from .constants import DATA_TYPE_TIMESTAMP
+from .constants import ENCODING_ASCII
 from .query_submitter import QuerySubmitter
 
 

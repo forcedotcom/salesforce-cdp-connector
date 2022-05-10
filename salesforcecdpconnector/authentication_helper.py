@@ -4,7 +4,19 @@
 #  SPDX-License-Identifier: BSD-3-Clause
 #  For full license text, see the LICENSE file in the repo root or https://opensource.org/licenses/BSD-3-Clause
 #
-from .constants import *
+from .constants import AUTH_PARAM_GRANT_TYPE
+from .constants import AUTH_PARAM_CDP_GRANT_TYPE
+from .constants import AUTH_PARAM_CDP_SUBJECT_TOKEN_TYPE
+from .constants import AUTH_PARAM_CDP_SUBJECT_TOKEN_TYPE_VALUE
+from .constants import AUTH_PARAM_CDP_SUBJECT_TOKEN
+from .constants import AUTH_RESPONSE_ACCESS_TOKEN
+from .constants import AUTH_RESPONSE_EXPIRES_IN
+from .constants import AUTH_RESPONSE_INSTANCE_URL
+from .constants import AUTH_PARAM_REFRESH_TOKEN_GRANT_TYPE
+from .constants import AUTH_PARAM_CLIENT_ID
+from .constants import AUTH_PARAM_CLIENT_SECRET
+from .constants import AUTH_PARAM_P_D
+from .constants import AUTH_PARAM_USERNAME
 from .exceptions import Error
 from datetime import datetime, timedelta
 
@@ -32,7 +44,7 @@ class AuthenticationHelper:
             if self.connection.core_token is not None:
                 try:
                     return self._exchange_token(self.connection.login_url, self.connection.core_token)
-                except:
+                except Exception:
                     # core token might be expired
                     # try renewing token
                     pass

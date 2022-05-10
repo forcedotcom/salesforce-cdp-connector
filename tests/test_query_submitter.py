@@ -13,9 +13,8 @@ import unittest
 
 from salesforcecdpconnector.query_submitter import QuerySubmitter
 
+
 class TestQuerySubmitter(unittest.TestCase):
-
-
     call1 = {
         "data": [
             [
@@ -86,7 +85,6 @@ class TestQuerySubmitter(unittest.TestCase):
         }
     }
 
-
     @responses.activate
     def test_get_query_results(self):
         responses.add(**{
@@ -97,13 +95,12 @@ class TestQuerySubmitter(unittest.TestCase):
         })
 
         results = QuerySubmitter._get_query_results('select * from UnifiedIndividuals__dlm',
-                                                   'www.salesforce.com', 'token')
+                                                    'www.salesforce.com', 'token')
 
         self.assertEqual(len(results['data']), 3)  # add assertion here
 
-
     @responses.activate
-    def test_get_query_results(self):
+    def test_get_next_batch(self):
         responses.add(**{
             'method': responses.GET,
             'url': re.compile('https://www.salesforce.com.*'),
@@ -112,7 +109,7 @@ class TestQuerySubmitter(unittest.TestCase):
         })
 
         results = QuerySubmitter._get_next_batch_results('fa489494-ff42-45ce-afd6-b838854b5a99',
-                                                   'www.salesforce.com', 'token')
+                                                         'www.salesforce.com', 'token')
 
         self.assertEqual(len(results['data']), 3)  # add assertion here
 

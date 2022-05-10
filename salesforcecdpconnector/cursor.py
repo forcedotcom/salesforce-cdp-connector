@@ -181,7 +181,7 @@ class SalesforceCDPCursor:
         try:
             iter(param)
             return True
-        except Exception as e:
+        except Exception:
             pass
         return False
 
@@ -237,7 +237,7 @@ class DBAPITypeObject:
 STRING = DBAPITypeObject("VARCHAR", "CHAR", "VARBINARY", "JSON")
 
 NUMBER = DBAPITypeObject(
-    "BOOLEAN", "TINYINT", "SMALLINT", "INTEGER", "BIGINT",  "DOUBLE", "DECIMAL"
+    "BOOLEAN", "TINYINT", "SMALLINT", "INTEGER", "BIGINT", "DOUBLE", "DECIMAL"
 )
 
 DATETIME = DBAPITypeObject(
@@ -246,4 +246,3 @@ DATETIME = DBAPITypeObject(
     "DATETIME",
     "TIMESTAMP"
 )
-

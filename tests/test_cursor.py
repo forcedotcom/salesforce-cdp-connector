@@ -106,6 +106,5 @@ class MyTestCase(unittest.TestCase):
         self.assertEqual(len(all_records), 6)
 
 
-
 if __name__ == '__main__':
     unittest.main()

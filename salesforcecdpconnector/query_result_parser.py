@@ -6,7 +6,12 @@
 #
 import dateutil.parser
 
-from .constants import *
+from .constants import QUERY_RESPONSE_KEY_DATA
+from .constants import QUERY_RESPONSE_KEY_METADATA
+from .constants import QUERY_RESPONSE_KEY_DONE
+from .constants import QUERY_RESPONSE_KEY_NEXT_BATCH_ID
+from .constants import DATA_TYPE_TIMESTAMP
+from .constants import QUERY_RESPONSE_KEY_PLACE_IN_ORDER
 from .parsed_query_result import QueryResult
 
 
@@ -62,8 +67,8 @@ class QueryResultParser:
         :return: One tuple representing description for a column
         """
         return (
-            name, # Column Name
-            data_type, # Column Type
+            name,  # Column Name
+            data_type,  # Column Type
             None,
             None,
             None,

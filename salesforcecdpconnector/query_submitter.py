@@ -9,7 +9,12 @@ import json
 
 import requests
 
-from .constants import *
+from .constants import API_VERSION_V2
+from .constants import QUERY_HEADER_KEY_AUTHORIZATION
+from .constants import QUERY_HEADER_KEY_CONTENT_TYPE
+from .constants import QUERY_HEADER_VALUE_APPLICATION_JSON
+from .constants import QUERY_HEADER_KEY_ACCEPT_ENCODING
+from .constants import QUERY_HEADER_VALUE_GZIP
 from .exceptions import Error
 
 
