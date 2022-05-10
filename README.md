@@ -1,4 +1,4 @@
-# salesforce-cdp-connector
+# cdp-connector
 
 A readonly CDP client for Python. This can be used to execute queries against CDP and load the data into python.
 
