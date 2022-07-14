@@ -120,7 +120,8 @@ class AuthenticationHelper:
         if access_code_res.status_code == 200:
             access_code = access_code_res.json()
             core_token = access_code[AUTH_RESPONSE_ACCESS_TOKEN]
-            return self._exchange_token(login_url, core_token)
+            org_url = access_code[AUTH_RESPONSE_INSTANCE_URL]
+            return self._exchange_token(org_url, core_token)
         else:
             raise Error('Token Renewal failed with code %d' % access_code_res.status_code)
 
@@ -141,6 +142,7 @@ class AuthenticationHelper:
         if access_code_res.status_code == 200:
             access_code = access_code_res.json()
             core_token = access_code[AUTH_RESPONSE_ACCESS_TOKEN]
-            return self._exchange_token(login_url, core_token)
+            org_url = access_code[AUTH_RESPONSE_INSTANCE_URL]
+            return self._exchange_token(org_url, core_token)
         else:
             raise Error('Core token retrieval failed with code %d' % access_code_res.status_code)
