@@ -19,6 +19,7 @@ from .constants import AUTH_PARAM_P_D
 from .constants import AUTH_PARAM_USERNAME
 from .exceptions import Error
 from datetime import datetime, timedelta
+from threading import Lock
 
 import requests
 
@@ -30,6 +31,7 @@ class AuthenticationHelper:
         self.instance_url = None
         self.token_expiry_time = None
         self.connection = connection
+        self.lock = Lock()
 
     def get_token(self):
         """
@@ -40,23 +42,38 @@ class AuthenticationHelper:
         """
         if self._is_token_valid():
             return self.exchange_token, self.instance_url
-        if self.connection.refresh_token is not None:
-            if self.connection.core_token is not None:
-                try:
-                    return self._exchange_token(self.connection.login_url, self.connection.core_token)
-                except Exception:
-                    # core token might be expired
-                    # try renewing token
-                    pass
+        return self._get_token()
 
-            return self._renew_token(self.connection.login_url, self.connection.refresh_token,
-                                     self.connection.client_id, self.connection.client_secret)
-        elif self.connection.password is not None:
-            return self._token_by_un_pwd_flow(self.connection.login_url, self.connection.client_id,
-                                              self.connection.client_secret, self.connection.username,
-                                              self.connection.password)
-        else:
-            raise Error('Sufficient information is not available for authentication')
+    def _get_token(self):
+        """
+        Retrieves the cdp token and instance url. This method does is synchronized.
+        The connection should be having client_id, client_secret and either refresh token or username and password
+
+        :return: cdp token, instance_url
+        """
+        try:
+            self.lock.acquire()
+            if self._is_token_valid():
+                return self.exchange_token, self.instance_url
+            if self.connection.refresh_token is not None:
+                if self.connection.core_token is not None:
+                    try:
+                        return self._exchange_token(self.connection.login_url, self.connection.core_token)
+                    except Exception:
+                        # core token might be expired
+                        # try renewing token
+                        pass
+
+                return self._renew_token(self.connection.login_url, self.connection.refresh_token,
+                                         self.connection.client_id, self.connection.client_secret)
+            elif self.connection.password is not None:
+                return self._token_by_un_pwd_flow(self.connection.login_url, self.connection.client_id,
+                                                  self.connection.client_secret, self.connection.username,
+                                                  self.connection.password)
+            else:
+                raise Error('Sufficient information is not available for authentication')
+        finally:
+            self.lock.release()
 
     def _is_token_valid(self):
         """
