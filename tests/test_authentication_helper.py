@@ -8,6 +8,7 @@
 import json
 import re
 import unittest
+from unittest.mock import MagicMock
 
 import responses
 
@@ -54,6 +55,18 @@ class TestAuthenticationHelper(unittest.TestCase):
 
         self.assertEqual(token, 'access_token')
         self.assertEqual(instanceUrl, 'instanceurl.salesforce.com')
+
+    def test_retry(self):
+        connection = SalesforceCDPConnection('https://login.salesforce.com', 'username', 'password', 'clientId',
+                                             'clientSecret')
+        authenticationHelper = AuthenticationHelper(connection)
+        authenticationHelper._get_token = MagicMock(side_effect=ValueError())
+        try:
+            authenticationHelper.get_token()
+        except:
+            pass
+        self.assertEqual(authenticationHelper._get_token.call_count, 3)
+
 
 if __name__ == '__main__':
     unittest.main()
