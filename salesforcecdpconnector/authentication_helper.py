@@ -17,9 +17,14 @@ from .constants import AUTH_PARAM_CLIENT_ID
 from .constants import AUTH_PARAM_CLIENT_SECRET
 from .constants import AUTH_PARAM_P_D
 from .constants import AUTH_PARAM_USERNAME
+from .constants import MAX_RETRY_COUNT
+from .constants import RETRY_DELAY_MIN_SECONDS
+from .constants import RETRY_DELAY_MAX_SECONDS
 from .exceptions import Error
 from datetime import datetime, timedelta
 from threading import Lock
+import time
+import random
 
 import requests
 
@@ -42,7 +47,14 @@ class AuthenticationHelper:
         """
         if self._is_token_valid():
             return self.exchange_token, self.instance_url
-        return self._get_token()
+        for i in range(MAX_RETRY_COUNT):
+            try:
+                return self._get_token()
+            except ValueError as e:
+                if i + 1 == MAX_RETRY_COUNT:
+                    raise e;
+                delay = random.randInt(RETRY_DELAY_MIN_SECONDS, RETRY_DELAY_MAX_SECONDS)
+                time.sleep(delay)
 
     def _get_token(self):
         """
