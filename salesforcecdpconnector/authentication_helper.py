@@ -53,7 +53,7 @@ class AuthenticationHelper:
             except ValueError as e:
                 if i + 1 == self.connection.max_retries:
                     raise e
-                delay = random.randInt(RETRY_DELAY_MIN_SECONDS, RETRY_DELAY_MAX_SECONDS)
+                delay = random.randint(RETRY_DELAY_MIN_SECONDS, RETRY_DELAY_MAX_SECONDS)
                 time.sleep(delay)
 
     def _get_token(self):
