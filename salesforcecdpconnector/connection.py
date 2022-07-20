@@ -6,6 +6,7 @@
 #
 from .authentication_helper import AuthenticationHelper
 from .constants import API_VERSION_V2
+from .constants import MAX_RETRY_COUNT
 from .cursor import SalesforceCDPCursor
 from .exceptions import Error
 from .pandas_utils import PandasUtils
@@ -21,7 +22,7 @@ class SalesforceCDPConnection:
     """
 
     def __init__(self, login_url, username=None, password=None, client_id=None, client_secret=None,
-                 api=API_VERSION_V2, core_token=None, refresh_token=None):
+                 api=API_VERSION_V2, core_token=None, refresh_token=None, max_retries=MAX_RETRY_COUNT):
         self.login_url = login_url
         self.username = username
         self.password = password
@@ -32,6 +33,7 @@ class SalesforceCDPConnection:
         self.refresh_token = refresh_token
         self.closed = False
         self.authentication_helper = AuthenticationHelper(self)
+        self.max_retries = max_retries
 
     def cursor(self):
         """
