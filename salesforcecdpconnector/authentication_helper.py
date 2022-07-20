@@ -127,9 +127,7 @@ class AuthenticationHelper:
         :return:
         """
         params = {'token': core_token}
-        access_code_res = requests.post(url=login_url + '/services/oauth2/revoke', params=params)
-        if access_code_res.status_code != 200:
-            raise Error('Core token revoke failed with code %d' % access_code_res.status_code)
+        requests.post(url=login_url + '/services/oauth2/revoke', params=params)
 
     def _renew_token(self, login_url, refresh_token, client_id, client_secret):
         """
