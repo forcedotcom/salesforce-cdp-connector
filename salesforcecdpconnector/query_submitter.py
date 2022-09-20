@@ -23,6 +23,8 @@ class QuerySubmitter:
     Helper methods to execute query against V2 API
     """
 
+    session = requests.session()
+
     @staticmethod
     def execute(connection, query, api_version=API_VERSION_V2, enable_arrow_stream=False):
         """
@@ -53,7 +55,7 @@ class QuerySubmitter:
         url = f'https://{instance_url}/api/{api_version}/query'
         json_payload = QuerySubmitter._get_payload(query)
         headers = QuerySubmitter._get_headers(token, enable_arrow_stream)
-        sql_response = requests.post(url=url, data=json_payload, headers=headers, verify=False)
+        sql_response = QuerySubmitter.session.post(url=url, data=json_payload, headers=headers, verify=False)
         if sql_response.status_code != 200:
             try:
                 error_json = sql_response.json()
@@ -69,7 +71,7 @@ class QuerySubmitter:
     def _get_next_batch_results(next_batch_id, instance_url, token, enable_arrow_stream=False):
         url = f'https://{instance_url}/api/v2/query/{next_batch_id}'
         headers = QuerySubmitter._get_headers(token, enable_arrow_stream)
-        sql_response = requests.get(url=url, headers=headers, verify=False)
+        sql_response = QuerySubmitter.session.get(url=url, headers=headers, verify=False)
         response_json = sql_response.json()
         if sql_response.status_code != 200:
             try:
