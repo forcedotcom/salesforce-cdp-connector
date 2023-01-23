@@ -54,26 +54,25 @@ class SalesforceCDPConnection:
             raise Error('Cannot create dataframe. Connection is closed')
         return PandasUtils.get_dataframe(self, query)
 
-    def describe_table(self, entity_name='', entity_category='', entity_type=''):
+    def describe_table(self, entity_name=None, entity_category=None, entity_type=None):
         """
         Returns the query result as Pandas Dataframe
         :param entity_name: Name of entity for which we want metadata
         :param entity_category: Entity Category for which we want metadata
         :param entity_type: Entity Type for which we want metadata
-        :return: Query Results as Pandas dataframe
+        :return: Query Results as Metadata of the tables
         """
         if self.closed:
-            raise Error('Cannot create dataframe. Connection is closed')
+            raise Error('Cannot create metadata for tables. Connection is closed')
         return MetadataProcessor.describe_table(self, entity_name, entity_category, entity_type)
 
     def get_tables(self):
         """
         Returns the query result as Pandas Dataframe
-        :param query: The input query
-        :return: Query Results as Pandas dataframe
+        :return: Query Results as Table list
         """
         if self.closed:
-            raise Error('Cannot create dataframe. Connection is closed')
+            raise Error('Cannot create table list. Connection is closed')
         return MetadataProcessor.get_tables(self)
 
     def close(self):

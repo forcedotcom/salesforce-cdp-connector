@@ -63,16 +63,15 @@ class QuerySubmitter:
         return QuerySubmitter._get_next_batch_results(next_batch_id, instance_url, token, enable_arrow_stream)
 
     @staticmethod
-    def get_metadata(connection, api_version=API_VERSION_V1, enable_arrow_stream=False):
+    def get_metadata(connection, request_params = {}):
         """
         This method fetches the metadata for a given tenant.
         :param connection:  SalesforceCDPConnection
-        :param api_version: v1 or v2 api
-        :param enable_arrow_stream: Set as True to fetch the results as ArrowStream
+        :param request_params: request parameters for metadata API
         :return: Metadata for a given tenant
         """
         token, instance_url = connection.authentication_helper.get_token()
-        return QuerySubmitter.__get_metadata_results(instance_url, token, api_version, enable_arrow_stream)
+        return QuerySubmitter.__get_metadata_results(instance_url, token, request_params)
 
     @staticmethod
     def _get_query_results(query, instance_url, token, api_version='V2', enable_arrow_stream=False):
@@ -122,12 +121,12 @@ class QuerySubmitter:
         return headers
 
     @staticmethod
-    def __get_metadata_results(instance_url, token, api_version='v1', enable_arrow_stream=False):
-        url = f'https://{instance_url}/api/{api_version}/metadata'
-        headers = QuerySubmitter._get_headers(token, enable_arrow_stream)
+    def __get_metadata_results(instance_url, token, parameters={}):
+        url = f'https://{instance_url}/api/v1/metadata'
+        headers = QuerySubmitter._get_headers(token, enable_arrow_stream=False)
         QuerySubmitter.logger.debug("Submitting metadata query for execution")
         start_time = timer()
-        sql_response = QuerySubmitter.session.get(url=url, headers=headers, verify=False)
+        sql_response = QuerySubmitter.session.get(url=url, headers=headers, verify=False, params=parameters)
         QuerySubmitter.logger.debug("Metadata Query Submitted in %s", str(timedelta(seconds=timer() - start_time)))
         if sql_response.status_code != 200:
             try:
