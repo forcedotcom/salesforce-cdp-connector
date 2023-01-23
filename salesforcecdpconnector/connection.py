@@ -10,6 +10,7 @@ from .constants import MAX_RETRY_COUNT
 from .cursor import SalesforceCDPCursor
 from .exceptions import Error
 from .pandas_utils import PandasUtils
+from .metadata_processor import MetadataProcessor
 
 apilevel = "2.0"
 threadsafety = 2
@@ -52,6 +53,28 @@ class SalesforceCDPConnection:
         if self.closed:
             raise Error('Cannot create dataframe. Connection is closed')
         return PandasUtils.get_dataframe(self, query)
+
+    def describe_table(self, entity_name='', entity_category='', entity_type=''):
+        """
+        Returns the query result as Pandas Dataframe
+        :param entity_name: Name of entity for which we want metadata
+        :param entity_category: Entity Category for which we want metadata
+        :param entity_type: Entity Type for which we want metadata
+        :return: Query Results as Pandas dataframe
+        """
+        if self.closed:
+            raise Error('Cannot create dataframe. Connection is closed')
+        return MetadataProcessor.describe_table(self, entity_name, entity_category, entity_type)
+
+    def get_tables(self):
+        """
+        Returns the query result as Pandas Dataframe
+        :param query: The input query
+        :return: Query Results as Pandas dataframe
+        """
+        if self.closed:
+            raise Error('Cannot create dataframe. Connection is closed')
+        return MetadataProcessor.get_tables(self)
 
     def close(self):
         """

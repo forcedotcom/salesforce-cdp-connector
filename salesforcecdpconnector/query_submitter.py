@@ -13,6 +13,7 @@ import socket
 from timeit import default_timer as timer
 
 from .constants import API_VERSION_V2
+from .constants import API_VERSION_V1
 from .constants import QUERY_HEADER_KEY_AUTHORIZATION
 from .constants import QUERY_HEADER_KEY_CONTENT_TYPE
 from .constants import QUERY_HEADER_VALUE_APPLICATION_JSON
@@ -62,6 +63,18 @@ class QuerySubmitter:
         return QuerySubmitter._get_next_batch_results(next_batch_id, instance_url, token, enable_arrow_stream)
 
     @staticmethod
+    def get_metadata(connection, api_version=API_VERSION_V1, enable_arrow_stream=False):
+        """
+        This method fetches the metadata for a given tenant.
+        :param connection:  SalesforceCDPConnection
+        :param api_version: v1 or v2 api
+        :param enable_arrow_stream: Set as True to fetch the results as ArrowStream
+        :return: Metadata for a given tenant
+        """
+        token, instance_url = connection.authentication_helper.get_token()
+        return QuerySubmitter.__get_metadata_results(instance_url, token, api_version, enable_arrow_stream)
+
+    @staticmethod
     def _get_query_results(query, instance_url, token, api_version='V2', enable_arrow_stream=False):
         url = f'https://{instance_url}/api/{api_version}/query'
         json_payload = QuerySubmitter._get_payload(query)
@@ -107,6 +120,25 @@ class QuerySubmitter:
         if enable_arrow_stream:
             headers['enable-arrow-stream'] = 'true'
         return headers
+
+    @staticmethod
+    def __get_metadata_results(instance_url, token, api_version='v1', enable_arrow_stream=False):
+        url = f'https://{instance_url}/api/{api_version}/metadata'
+        headers = QuerySubmitter._get_headers(token, enable_arrow_stream)
+        QuerySubmitter.logger.debug("Submitting metadata query for execution")
+        start_time = timer()
+        sql_response = QuerySubmitter.session.get(url=url, headers=headers, verify=False)
+        QuerySubmitter.logger.debug("Metadata Query Submitted in %s", str(timedelta(seconds=timer() - start_time)))
+        if sql_response.status_code != 200:
+            try:
+                error_json = sql_response.json()
+                error_message = error_json['message']
+            finally:
+                if error_message is not None:
+                    raise Error('Failed executing metadata query in server : %s' % error_message)
+                raise Error('Failed executing query in server')
+        response_json = sql_response.json()
+        return response_json
 
     @staticmethod
     def _get_payload(query):
