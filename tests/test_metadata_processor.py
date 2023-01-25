@@ -7,13 +7,13 @@
 
 import unittest
 from unittest.mock import patch
+from salesforcecdpconnector.genie_table import *
 
 from salesforcecdpconnector.connection import SalesforceCDPConnection
 from salesforcecdpconnector.query_submitter import QuerySubmitter
 
 
 class MyTestCase(unittest.TestCase):
-
     metadata_result = {
         "metadata": [
             {
@@ -96,23 +96,53 @@ class MyTestCase(unittest.TestCase):
             {
                 "fields": [
                     {
-                        "name": "city__c",
-                        "displayName": "city",
+                        "name": "Delta_Type__c",
+                        "displayName": "Delta Type",
                         "type": "STRING"
                     },
                     {
-                        "name": "created__c",
-                        "displayName": "created",
+                        "name": "Id__c",
+                        "displayName": "Id",
+                        "type": "STRING"
+                    },
+                    {
+                        "name": "Segment_Id__c",
+                        "displayName": "Segment Id",
+                        "type": "STRING"
+                    },
+                    {
+                        "name": "Snapshot_Type__c",
+                        "displayName": "Sanpshot Type",
+                        "type": "STRING"
+                    },
+                    {
+                        "name": "Timestamp__c",
+                        "displayName": "Timestamp",
+                        "type": "DATE_TIME"
+                    },
+                    {
+                        "name": "Version_Stamp__c",
+                        "displayName": "Version Stamp",
                         "type": "DATE_TIME"
                     }
                 ],
-                "category": "Profile",
-                "name": "Anahita_runner_profiles_D88F0219__dlm",
-                "displayName": "Anahita-runner_profiles",
+                "indexes": [],
+                "category": "Segment_Membership",
+                "name": "Brand_SM_PID__dlm",
+                "displayName": "Brand - Profiles",
+                "relationships": [
+                    {
+                        "fromEntity": "Brand_SM_PID__dlm",
+                        "toEntity": "ssot__Brand__dlm",
+                        "fromEntityAttribute": "Id__c",
+                        "toEntityAttribute": "ssot__Id__c",
+                        "cardinality": "NTOONE"
+                    }
+                ],
                 "primaryKeys": [
                     {
-                        "name": "city__c",
-                        "displayName": "city",
+                        "name": "Id__c",
+                        "displayName": "Id",
                         "indexOrder": "1"
                     }
                 ]
@@ -120,33 +150,144 @@ class MyTestCase(unittest.TestCase):
             {
                 "fields": [
                     {
-                        "name": "cdp_sys_SourceVersion__c",
-                        "displayName": "cdp_sys_SourceVersion",
+                        "name": "Delta_Type__c",
+                        "displayName": "Delta Type",
                         "type": "STRING"
                     },
                     {
-                        "name": "id__c",
-                        "displayName": "id",
+                        "name": "Id__c",
+                        "displayName": "Id",
+                        "type": "NUMBER"
+                    },
+                    {
+                        "name": "Segment_Id__c",
+                        "displayName": "Segment Id",
                         "type": "STRING"
                     },
                     {
-                        "name": "modified__c",
-                        "displayName": "modified",
+                        "name": "Snapshot_Type__c",
+                        "displayName": "Sanpshot Type",
+                        "type": "STRING"
+                    },
+                    {
+                        "name": "Timestamp__c",
+                        "displayName": "Timestamp",
                         "type": "DATE_TIME"
                     },
                     {
-                        "name": "name__c",
-                        "displayName": "name",
+                        "name": "Version_Stamp__c",
+                        "displayName": "Version Stamp",
+                        "type": "DATE_TIME"
+                    }
+                ],
+                "indexes": [],
+                "category": "Segment_Membership",
+                "name": "SrcValue_SM_PID__dlm",
+                "displayName": "SrcValue - Profiles",
+                "relationships": [
+                    {
+                        "fromEntity": "SrcValue_SM_PID__dlm",
+                        "toEntity": "SrcValue__dlm",
+                        "fromEntityAttribute": "Id__c",
+                        "toEntityAttribute": "id__c",
+                        "cardinality": "NTOONE"
+                    }
+                ],
+                "primaryKeys": [
+                    {
+                        "name": "Id__c",
+                        "displayName": "Id",
+                        "indexOrder": "1"
+                    }
+                ]
+            },
+            {
+                "name": "yrOpr1__cio",
+                "displayName": "yrOpr1",
+                "dimensions": [
+                    {
+                        "name": "indbirth__c",
+                        "displayName": "",
+                        "type": "DATE_TIME"
+                    },
+                    {
+                        "name": "ids__c",
+                        "displayName": "",
                         "type": "STRING"
                     }
                 ],
-                "category": "Related",
-                "name": "AniketNTO_footwear_0BC0C938__dlo",
-                "displayName": "AniketNTO-footwear",
+                "measures": [
+                    {
+                        "name": "cids__c",
+                        "displayName": "",
+                        "type": "NUMBER"
+                    }
+                ],
+                "relationships": [
+                    {
+                        "fromEntity": "ssot__Individual__dlm",
+                        "toEntity": "yrOpr1__cio"
+                    }
+                ],
+                "partitionBy": "indbirth__c",
+                "latestProcessTime": "2023-01-18T12:06:19.95000Z",
+                "latestSuccessfulProcessTime": "2023-01-18T10:00:57.00000Z"
+            }
+        ]
+    }
+
+    metadata_result_with_name = {
+        "metadata": [
+            {
+                "fields": [
+                    {
+                        "name": "Delta_Type__c",
+                        "displayName": "Delta Type",
+                        "type": "STRING"
+                    },
+                    {
+                        "name": "Id__c",
+                        "displayName": "Id",
+                        "type": "NUMBER"
+                    },
+                    {
+                        "name": "Segment_Id__c",
+                        "displayName": "Segment Id",
+                        "type": "STRING"
+                    },
+                    {
+                        "name": "Snapshot_Type__c",
+                        "displayName": "Sanpshot Type",
+                        "type": "STRING"
+                    },
+                    {
+                        "name": "Timestamp__c",
+                        "displayName": "Timestamp",
+                        "type": "DATE_TIME"
+                    },
+                    {
+                        "name": "Version_Stamp__c",
+                        "displayName": "Version Stamp",
+                        "type": "DATE_TIME"
+                    }
+                ],
+                "indexes": [],
+                "category": "Segment_Membership",
+                "name": "SrcValue_SM_PID__dlm",
+                "displayName": "SrcValue - Profiles",
+                "relationships": [
+                    {
+                        "fromEntity": "SrcValue_SM_PID__dlm",
+                        "toEntity": "SrcValue__dlm",
+                        "fromEntityAttribute": "Id__c",
+                        "toEntityAttribute": "id__c",
+                        "cardinality": "NTOONE"
+                    }
+                ],
                 "primaryKeys": [
                     {
-                        "name": "id__c",
-                        "displayName": "id",
+                        "name": "Id__c",
+                        "displayName": "Id",
                         "indexOrder": "1"
                     }
                 ]
@@ -154,16 +295,76 @@ class MyTestCase(unittest.TestCase):
         ]
     }
 
-    @patch.object(QuerySubmitter, 'get_metadata', return_value=metadata_result)
-    def test_get_metadata(self, mock1):
-        connection = SalesforceCDPConnection('url', 'username', 'password', 'client_id', 'client_secret')
-        table_list = connection.get_tables()
-        table_metadata_complete = connection.describe_table()
-        metadata_table_list = ['AccountContact', 'ACX_DelTable', 'Anahita-exercises', 'Anahita-runner_profiles', 'AniketNTO-footwear']
+    table_entry_1 = GenieTable(name='abc__dll', display_name='AccountContact', category='Profile',
+                               primary_keys=[PrimaryKeys('accountcontact__c', 'AccountContact', '1')],
+                               partition_by='', fields=[Field('accountcontact__c', 'AccountContact', 'STRING'),
+                                                        Field('actioncadencestep__c', 'ActionCadenceStep',
+                                                              'STRING')],
+                               relationships=[],
+                               indexes=[])
+    table_entry_2 = GenieTable(name='ACX_DelTable__dll', display_name='ACX_DelTable', category='Profile',
+                               primary_keys=[PrimaryKeys('id__c', 'id', '1')],
+                               partition_by='', fields=[Field('birthday__c', 'birthday', 'DATE_TIME'),
+                                                        Field('id__c', 'id', 'NUMBER')],
+                               relationships=[],
+                               indexes=[])
+    table_entry_3 = GenieTable(name='Anahita_exercises_6174646D__dlm', display_name='Anahita-exercises',
+                               category='Engagement',
+                               primary_keys=[PrimaryKeys('runid__c', 'runid', '1')],
+                               partition_by='', fields=[Field('calories_burned__c', 'calories_burned', 'NUMBER'),
+                                                        Field('runid__c', 'runid', 'NUMBER'),
+                                                        Field('type__c', 'type', 'STRING')],
+                               relationships=[],
+                               indexes=[])
+    table_entry_4 = GenieTable(name='Brand_SM_PID__dlm', display_name='Brand - Profiles',
+                               category='Segment_Membership',
+                               primary_keys=[PrimaryKeys('Id__c', 'Id', '1')],
+                               partition_by='', fields=[Field('Delta_Type__c', 'Delta Type', 'STRING'),
+                                                        Field('Id__c', 'Id', 'STRING'),
+                                                        Field('Segment_Id__c', 'Segment Id', 'STRING'),
+                                                        Field('Snapshot_Type__c', 'Sanpshot Type', 'STRING'),
+                                                        Field('Timestamp__c', 'Timestamp', 'DATE_TIME'),
+                                                        Field('Version_Stamp__c', 'Version Stamp', 'DATE_TIME')],
+                               relationships=[
+                                   Relationship('Brand_SM_PID__dlm', 'ssot__Brand__dlm', 'Id__c', 'ssot__Id__c',
+                                                'NTOONE')],
+                               indexes=[])
+    table_entry_5 = GenieTable(name='SrcValue_SM_PID__dlm', display_name='SrcValue - Profiles',
+                               category='Segment_Membership',
+                               primary_keys=[PrimaryKeys('Id__c', 'Id', '1')],
+                               partition_by='', fields=[Field('Delta_Type__c', 'Delta Type', 'STRING'),
+                                                        Field('Id__c', 'Id', 'NUMBER'),
+                                                        Field('Segment_Id__c', 'Segment Id', 'STRING'),
+                                                        Field('Snapshot_Type__c', 'Sanpshot Type', 'STRING'),
+                                                        Field('Timestamp__c', 'Timestamp', 'DATE_TIME'),
+                                                        Field('Version_Stamp__c', 'Version Stamp', 'DATE_TIME')],
+                               relationships=[
+                                   Relationship('SrcValue_SM_PID__dlm', 'SrcValue__dlm', 'Id__c', 'id__c',
+                                                'NTOONE')],
+                               indexes=[])
+    table_entry_6 = GenieTable(name='yrOpr1__cio', display_name='yrOpr1', category='',
+                               primary_keys=[],
+                               partition_by='indbirth__c',
+                               fields=[Field('indbirth__c', '', 'DATE_TIME', False, True),
+                                       Field('ids__c', '', 'STRING', False, True),
+                                       Field('cids__c', '', 'NUMBER', True, False)],
+                               relationships=[Relationship('ssot__Individual__dlm', 'yrOpr1__cio')], indexes=[])
 
-        # validating the results of all the tests
-        self.assertListEqual(table_list, metadata_table_list)
-        self.assertEqual(len(table_metadata_complete['metadata']), 5)
+    @patch.object(QuerySubmitter, 'get_metadata', return_value=metadata_result)
+    def test_get_list_tables(self, mock1):
+        connection = SalesforceCDPConnection('url', 'username', 'password', 'client_id', 'client_secret')
+        genie_table_list_expected = [self.table_entry_1, self.table_entry_2, self.table_entry_3, self.table_entry_4,
+                                     self.table_entry_5,
+                                     self.table_entry_6]
+        genie_table_list_returned = connection.list_tables()
+        for (entry1, entry2) in zip(genie_table_list_expected, genie_table_list_returned):
+            self.assertEqual(entry1, entry2)
+
+    @patch.object(QuerySubmitter, 'get_metadata', return_value=metadata_result_with_name)
+    def test_get_list_tables_with_entity(self, mock1):
+        connection = SalesforceCDPConnection('url', 'username', 'password', 'client_id', 'client_secret')
+        genie_table_list_returned_with_table_name = connection.list_tables('SrcValue_SM_PID__dlm')
+        self.assertEqual(genie_table_list_returned_with_table_name[0], self.table_entry_5)
 
 
 if __name__ == '__main__':
