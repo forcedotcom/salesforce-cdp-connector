@@ -236,65 +236,6 @@ class MyTestCase(unittest.TestCase):
         ]
     }
 
-    metadata_result_with_name = {
-        "metadata": [
-            {
-                "fields": [
-                    {
-                        "name": "Delta_Type__c",
-                        "displayName": "Delta Type",
-                        "type": "STRING"
-                    },
-                    {
-                        "name": "Id__c",
-                        "displayName": "Id",
-                        "type": "NUMBER"
-                    },
-                    {
-                        "name": "Segment_Id__c",
-                        "displayName": "Segment Id",
-                        "type": "STRING"
-                    },
-                    {
-                        "name": "Snapshot_Type__c",
-                        "displayName": "Sanpshot Type",
-                        "type": "STRING"
-                    },
-                    {
-                        "name": "Timestamp__c",
-                        "displayName": "Timestamp",
-                        "type": "DATE_TIME"
-                    },
-                    {
-                        "name": "Version_Stamp__c",
-                        "displayName": "Version Stamp",
-                        "type": "DATE_TIME"
-                    }
-                ],
-                "indexes": [],
-                "category": "Segment_Membership",
-                "name": "SrcValue_SM_PID__dlm",
-                "displayName": "SrcValue - Profiles",
-                "relationships": [
-                    {
-                        "fromEntity": "SrcValue_SM_PID__dlm",
-                        "toEntity": "SrcValue__dlm",
-                        "fromEntityAttribute": "Id__c",
-                        "toEntityAttribute": "id__c",
-                        "cardinality": "NTOONE"
-                    }
-                ],
-                "primaryKeys": [
-                    {
-                        "name": "Id__c",
-                        "displayName": "Id",
-                        "indexOrder": "1"
-                    }
-                ]
-            }
-        ]
-    }
-
     table_entry_1 = GenieTable(name='abc__dll', display_name='AccountContact', category='Profile',
                                primary_keys=[PrimaryKeys('accountcontact__c', 'AccountContact', '1')],
                                partition_by='', fields=[Field('accountcontact__c', 'AccountContact', 'STRING'),
@@ -360,11 +301,27 @@ class MyTestCase(unittest.TestCase):
         for (entry1, entry2) in zip(genie_table_list_expected, genie_table_list_returned):
             self.assertEqual(entry1, entry2)
 
-    @patch.object(QuerySubmitter, 'get_metadata', return_value=metadata_result_with_name)
-    def test_get_list_tables_with_entity(self, mock1):
+    @patch.object(QuerySubmitter, 'get_metadata', return_value=metadata_result)
+    def test_get_list_tables_with_entity_name(self, mock1):
         connection = SalesforceCDPConnection('url', 'username', 'password', 'client_id', 'client_secret')
         genie_table_list_returned_with_table_name = connection.list_tables('SrcValue_SM_PID__dlm')
         self.assertEqual(genie_table_list_returned_with_table_name[0], self.table_entry_5)
+
+    @patch.object(QuerySubmitter, 'get_metadata', return_value=metadata_result)
+    def test_get_list_tables_with_entity_category(self, mock1):
+        connection = SalesforceCDPConnection('url', 'username', 'password', 'client_id', 'client_secret')
+        genie_table_list_returned_with_table_category = connection.list_tables(table_name=None,
+                                                                           table_category='Segment_Membership',
+                                                                           table_type=None)
+        self.assertEqual(genie_table_list_returned_with_table_category, [self.table_entry_4, self.table_entry_5])
+
+    @patch.object(QuerySubmitter, 'get_metadata', return_value=metadata_result)
+    def test_get_list_tables_with_entity_type(self, mock1):
+        connection = SalesforceCDPConnection('url', 'username', 'password', 'client_id', 'client_secret')
+        genie_table_list_returned_with_table_type = connection.list_tables(table_name=None,
+                                                                           table_category=None,
+                                                                           table_type='DataModelObject')
+        self.assertEqual(genie_table_list_returned_with_table_type, [self.table_entry_3, self.table_entry_4, self.table_entry_5])
 
 
 if __name__ == '__main__':

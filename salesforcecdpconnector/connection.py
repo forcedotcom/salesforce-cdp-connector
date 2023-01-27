@@ -54,14 +54,14 @@ class SalesforceCDPConnection:
             raise Error('Cannot create dataframe. Connection is closed')
         return PandasUtils.get_dataframe(self, query)
 
-    def list_tables(self, table_name=None, table_type=None, table_category=None):
+    def list_tables(self, table_name=None, table_category=None, table_type=None):
         """
         Returns the genie table list
         :return: Query Results as Table list
         """
         if self.closed:
             raise Error('Cannot create table list. Connection is closed')
-        return MetadataProcessor.list_tables(self, table_name, table_type, table_category)
+        return MetadataProcessor.list_tables(self, table_name, table_category, table_type)
 
     def close(self):
         """

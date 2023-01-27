@@ -4,12 +4,16 @@
 #  SPDX-License-Identifier: BSD-3-Clause
 #  For full license text, see the LICENSE file in the repo root or https://opensource.org/licenses/BSD-3-Clause
 #
+from functools import lru_cache
+
 from .query_submitter import QuerySubmitter
 from .genie_table import *
 from .constants import *
 
 
 class MetadataProcessor:
+    table_name_substring_to_table_type_map = {"CalculateInsight": "__cio", "DataLakeObject": "__dll",
+                                              "DataModelObject": "__dlm"}
 
     @staticmethod
     def list_tables(connection, table_name=None, table_category=None, table_type=None):
@@ -29,9 +33,27 @@ class MetadataProcessor:
         if table_type is not None and table_type != '':
             request_params['entityType'] = table_type
 
-        tables_metadata_json = MetadataProcessor.__describe_table_result(connection, request_params)
+        tables_metadata_json = MetadataProcessor.__describe_table_result(connection)
+        
         genie_table_list = MetadataProcessor.__convert_metadata_json_to_genie_table(tables_metadata_json)
-        return genie_table_list
+        # iterate the list and return the result as expected
+        # First filter through the table_name
+        genie_table_list_filtered_with_params = genie_table_list.copy()
+        if table_name is not None:
+            for genie_table in genie_table_list:
+                if genie_table.name != table_name:
+                    genie_table_list_filtered_with_params.remove(genie_table)
+        # filter through the table_category
+        if table_category is not None:
+            for genie_table in genie_table_list:
+                if genie_table.category != table_category:
+                    genie_table_list_filtered_with_params.remove(genie_table)
+        # filter through the table_type
+        if table_type is not None:
+            for genie_table in genie_table_list:
+                if MetadataProcessor.table_name_substring_to_table_type_map[table_type] not in genie_table.name:
+                    genie_table_list_filtered_with_params.remove(genie_table)
+        return genie_table_list_filtered_with_params
 
     @staticmethod
     def __convert_metadata_json_to_genie_table(tables_metadata_json):
@@ -62,14 +84,16 @@ class MetadataProcessor:
             if GENIE_TABLE_PARTITION_BY in table_metadata.keys():
                 genie_table.partition_by = table_metadata[GENIE_TABLE_PARTITION_BY]
 
-            if GENIE_TABLE_RELATIONSHIPS in table_metadata.keys() and len(table_metadata[GENIE_TABLE_RELATIONSHIPS]) > 0:
+            if GENIE_TABLE_RELATIONSHIPS in table_metadata.keys() and len(
+                    table_metadata[GENIE_TABLE_RELATIONSHIPS]) > 0:
                 genie_table_relationships = []
                 for relationship in table_metadata[GENIE_TABLE_RELATIONSHIPS]:
                     genie_table_relationship = Relationship(
                         relationship[RELATIONSHIP_FROM_TABLE],
                         relationship[RELATIONSHIP_TO_TABLE])
                     if RELATIONSHIP_FROM_ENTITY_ATTRIBUTE in relationship.keys():
-                        genie_table_relationship.from_entity_attribute = relationship[RELATIONSHIP_FROM_ENTITY_ATTRIBUTE]
+                        genie_table_relationship.from_entity_attribute = relationship[
+                            RELATIONSHIP_FROM_ENTITY_ATTRIBUTE]
                     if RELATIONSHIP_TO_ENTITY_ATTRIBUTE in relationship.keys():
                         genie_table_relationship.to_entity_attribute = relationship[RELATIONSHIP_TO_ENTITY_ATTRIBUTE]
                     if RELATIONSHIP_CARDINALITY in relationship.keys():
@@ -121,6 +145,7 @@ class MetadataProcessor:
         return False
 
     @staticmethod
+    @lru_cache()
     def __describe_table_result(connection, request_params={}):
         result = QuerySubmitter.get_metadata(connection, request_params)
         return result
