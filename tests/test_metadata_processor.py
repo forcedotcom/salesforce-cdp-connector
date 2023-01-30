@@ -236,6 +236,320 @@ class MyTestCase(unittest.TestCase):
         ]
     }
 
+    metadata_dmo = {
+        "metadata": [
+            {
+                "fields": [
+                    {
+                        "name": "calories_burned__c",
+                        "displayName": "calories_burned",
+                        "type": "NUMBER"
+                    },
+                    {
+                        "name": "runid__c",
+                        "displayName": "runid",
+                        "type": "NUMBER"
+                    },
+                    {
+                        "name": "type__c",
+                        "displayName": "type",
+                        "type": "STRING"
+                    }
+                ],
+                "category": "Engagement",
+                "name": "Anahita_exercises_6174646D__dlm",
+                "displayName": "Anahita-exercises",
+                "primaryKeys": [
+                    {
+                        "name": "runid__c",
+                        "displayName": "runid",
+                        "indexOrder": "1"
+                    }
+                ]
+            },
+            {
+                "fields": [
+                    {
+                        "name": "Delta_Type__c",
+                        "displayName": "Delta Type",
+                        "type": "STRING"
+                    },
+                    {
+                        "name": "Id__c",
+                        "displayName": "Id",
+                        "type": "STRING"
+                    },
+                    {
+                        "name": "Segment_Id__c",
+                        "displayName": "Segment Id",
+                        "type": "STRING"
+                    },
+                    {
+                        "name": "Snapshot_Type__c",
+                        "displayName": "Sanpshot Type",
+                        "type": "STRING"
+                    },
+                    {
+                        "name": "Timestamp__c",
+                        "displayName": "Timestamp",
+                        "type": "DATE_TIME"
+                    },
+                    {
+                        "name": "Version_Stamp__c",
+                        "displayName": "Version Stamp",
+                        "type": "DATE_TIME"
+                    }
+                ],
+                "indexes": [],
+                "category": "Segment_Membership",
+                "name": "Brand_SM_PID__dlm",
+                "displayName": "Brand - Profiles",
+                "relationships": [
+                    {
+                        "fromEntity": "Brand_SM_PID__dlm",
+                        "toEntity": "ssot__Brand__dlm",
+                        "fromEntityAttribute": "Id__c",
+                        "toEntityAttribute": "ssot__Id__c",
+                        "cardinality": "NTOONE"
+                    }
+                ],
+                "primaryKeys": [
+                    {
+                        "name": "Id__c",
+                        "displayName": "Id",
+                        "indexOrder": "1"
+                    }
+                ]
+            },
+            {
+                "fields": [
+                    {
+                        "name": "Delta_Type__c",
+                        "displayName": "Delta Type",
+                        "type": "STRING"
+                    },
+                    {
+                        "name": "Id__c",
+                        "displayName": "Id",
+                        "type": "NUMBER"
+                    },
+                    {
+                        "name": "Segment_Id__c",
+                        "displayName": "Segment Id",
+                        "type": "STRING"
+                    },
+                    {
+                        "name": "Snapshot_Type__c",
+                        "displayName": "Sanpshot Type",
+                        "type": "STRING"
+                    },
+                    {
+                        "name": "Timestamp__c",
+                        "displayName": "Timestamp",
+                        "type": "DATE_TIME"
+                    },
+                    {
+                        "name": "Version_Stamp__c",
+                        "displayName": "Version Stamp",
+                        "type": "DATE_TIME"
+                    }
+                ],
+                "indexes": [],
+                "category": "Segment_Membership",
+                "name": "SrcValue_SM_PID__dlm",
+                "displayName": "SrcValue - Profiles",
+                "relationships": [
+                    {
+                        "fromEntity": "SrcValue_SM_PID__dlm",
+                        "toEntity": "SrcValue__dlm",
+                        "fromEntityAttribute": "Id__c",
+                        "toEntityAttribute": "id__c",
+                        "cardinality": "NTOONE"
+                    }
+                ],
+                "primaryKeys": [
+                    {
+                        "name": "Id__c",
+                        "displayName": "Id",
+                        "indexOrder": "1"
+                    }
+                ]
+            }
+        ]
+    }
+
+    metadata_segment_membership = {
+        "metadata": [
+            {
+                "fields": [
+                    {
+                        "name": "Delta_Type__c",
+                        "displayName": "Delta Type",
+                        "type": "STRING"
+                    },
+                    {
+                        "name": "Id__c",
+                        "displayName": "Id",
+                        "type": "STRING"
+                    },
+                    {
+                        "name": "Segment_Id__c",
+                        "displayName": "Segment Id",
+                        "type": "STRING"
+                    },
+                    {
+                        "name": "Snapshot_Type__c",
+                        "displayName": "Sanpshot Type",
+                        "type": "STRING"
+                    },
+                    {
+                        "name": "Timestamp__c",
+                        "displayName": "Timestamp",
+                        "type": "DATE_TIME"
+                    },
+                    {
+                        "name": "Version_Stamp__c",
+                        "displayName": "Version Stamp",
+                        "type": "DATE_TIME"
+                    }
+                ],
+                "indexes": [],
+                "category": "Segment_Membership",
+                "name": "Brand_SM_PID__dlm",
+                "displayName": "Brand - Profiles",
+                "relationships": [
+                    {
+                        "fromEntity": "Brand_SM_PID__dlm",
+                        "toEntity": "ssot__Brand__dlm",
+                        "fromEntityAttribute": "Id__c",
+                        "toEntityAttribute": "ssot__Id__c",
+                        "cardinality": "NTOONE"
+                    }
+                ],
+                "primaryKeys": [
+                    {
+                        "name": "Id__c",
+                        "displayName": "Id",
+                        "indexOrder": "1"
+                    }
+                ]
+            },
+            {
+                "fields": [
+                    {
+                        "name": "Delta_Type__c",
+                        "displayName": "Delta Type",
+                        "type": "STRING"
+                    },
+                    {
+                        "name": "Id__c",
+                        "displayName": "Id",
+                        "type": "NUMBER"
+                    },
+                    {
+                        "name": "Segment_Id__c",
+                        "displayName": "Segment Id",
+                        "type": "STRING"
+                    },
+                    {
+                        "name": "Snapshot_Type__c",
+                        "displayName": "Sanpshot Type",
+                        "type": "STRING"
+                    },
+                    {
+                        "name": "Timestamp__c",
+                        "displayName": "Timestamp",
+                        "type": "DATE_TIME"
+                    },
+                    {
+                        "name": "Version_Stamp__c",
+                        "displayName": "Version Stamp",
+                        "type": "DATE_TIME"
+                    }
+                ],
+                "indexes": [],
+                "category": "Segment_Membership",
+                "name": "SrcValue_SM_PID__dlm",
+                "displayName": "SrcValue - Profiles",
+                "relationships": [
+                    {
+                        "fromEntity": "SrcValue_SM_PID__dlm",
+                        "toEntity": "SrcValue__dlm",
+                        "fromEntityAttribute": "Id__c",
+                        "toEntityAttribute": "id__c",
+                        "cardinality": "NTOONE"
+                    }
+                ],
+                "primaryKeys": [
+                    {
+                        "name": "Id__c",
+                        "displayName": "Id",
+                        "indexOrder": "1"
+                    }
+                ]
+            }
+        ]
+    }
+
+    metadata_entity_name = {
+        "metadata": [
+            {
+                "fields": [
+                    {
+                        "name": "Delta_Type__c",
+                        "displayName": "Delta Type",
+                        "type": "STRING"
+                    },
+                    {
+                        "name": "Id__c",
+                        "displayName": "Id",
+                        "type": "NUMBER"
+                    },
+                    {
+                        "name": "Segment_Id__c",
+                        "displayName": "Segment Id",
+                        "type": "STRING"
+                    },
+                    {
+                        "name": "Snapshot_Type__c",
+                        "displayName": "Sanpshot Type",
+                        "type": "STRING"
+                    },
+                    {
+                        "name": "Timestamp__c",
+                        "displayName": "Timestamp",
+                        "type": "DATE_TIME"
+                    },
+                    {
+                        "name": "Version_Stamp__c",
+                        "displayName": "Version Stamp",
+                        "type": "DATE_TIME"
+                    }
+                ],
+                "indexes": [],
+                "category": "Segment_Membership",
+                "name": "SrcValue_SM_PID__dlm",
+                "displayName": "SrcValue - Profiles",
+                "relationships": [
+                    {
+                        "fromEntity": "SrcValue_SM_PID__dlm",
+                        "toEntity": "SrcValue__dlm",
+                        "fromEntityAttribute": "Id__c",
+                        "toEntityAttribute": "id__c",
+                        "cardinality": "NTOONE"
+                    }
+                ],
+                "primaryKeys": [
+                    {
+                        "name": "Id__c",
+                        "displayName": "Id",
+                        "indexOrder": "1"
+                    }
+                ]
+            }
+        ]
+    }
+
     table_entry_1 = GenieTable(name='abc__dll', display_name='AccountContact', category='Profile',
                                primary_keys=[PrimaryKeys('accountcontact__c', 'AccountContact', '1')],
                                partition_by=None, fields=[Field('accountcontact__c', 'AccountContact', 'STRING'),
@@ -301,13 +615,13 @@ class MyTestCase(unittest.TestCase):
         for (entry1, entry2) in zip(genie_table_list_expected, genie_table_list_returned):
             self.assertEqual(entry1, entry2)
 
-    @patch.object(QuerySubmitter, 'get_metadata', return_value=metadata_result)
+    @patch.object(QuerySubmitter, 'get_metadata', return_value=metadata_entity_name)
     def test_get_list_tables_with_entity_name(self, mock1):
         connection = SalesforceCDPConnection('url', 'username', 'password', 'client_id', 'client_secret')
         genie_table_list_returned_with_table_name = connection.list_tables('SrcValue_SM_PID__dlm')
         self.assertEqual(genie_table_list_returned_with_table_name[0], self.table_entry_5)
 
-    @patch.object(QuerySubmitter, 'get_metadata', return_value=metadata_result)
+    @patch.object(QuerySubmitter, 'get_metadata', return_value=metadata_segment_membership)
     def test_get_list_tables_with_entity_category(self, mock1):
         connection = SalesforceCDPConnection('url', 'username', 'password', 'client_id', 'client_secret')
         genie_table_list_returned_with_table_category = connection.list_tables(table_name=None,
@@ -315,7 +629,7 @@ class MyTestCase(unittest.TestCase):
                                                                            table_type=None)
         self.assertEqual(genie_table_list_returned_with_table_category, [self.table_entry_4, self.table_entry_5])
 
-    @patch.object(QuerySubmitter, 'get_metadata', return_value=metadata_result)
+    @patch.object(QuerySubmitter, 'get_metadata', return_value=metadata_dmo)
     def test_get_list_tables_with_entity_type(self, mock1):
         connection = SalesforceCDPConnection('url', 'username', 'password', 'client_id', 'client_secret')
         genie_table_list_returned_with_table_type = connection.list_tables(table_name=None,
