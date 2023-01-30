@@ -6,11 +6,8 @@
 #
 
 class PrimaryKeys:
-    name = ''
-    display_name = ''
-    index_order = ''
 
-    def __init__(self, name, display_name, index_order):
+    def __init__(self, name=None, display_name=None, index_order=None):
         self.name = name
         self.display_name = display_name
         self.index_order = index_order
@@ -21,13 +18,8 @@ class PrimaryKeys:
 
 
 class Relationship:
-    from_table = ''
-    to_table = ''
-    from_entity_attribute = ''
-    to_entity_attribute = ''
-    cardinality = ''
 
-    def __init__(self, from_table, to_table, from_entity_attribute='', to_entity_attribute='', cardinality=''):
+    def __init__(self, from_table=None, to_table=None, from_entity_attribute=None, to_entity_attribute=None, cardinality=None):
         self.from_table = from_table
         self.to_table = to_table
         self.from_entity_attribute = from_entity_attribute
@@ -41,13 +33,8 @@ class Relationship:
 
 
 class Field:
-    name = ''
-    display_name = ''
-    type = ''
-    is_measure = False
-    is_dimension = False
 
-    def __init__(self, name, display_name, type, is_measure=False, is_dimension=False):
+    def __init__(self, name=None, display_name=None, type=None, is_measure=False, is_dimension=False):
         self.name = name
         self.display_name = display_name
         self.type = type
@@ -61,16 +48,8 @@ class Field:
 
 
 class GenieTable:
-    name = ''
-    display_name = ''
-    category = ''
-    primary_keys = []
-    partition_by = ''
-    fields = []
-    relationships = []
-    indexes = []
 
-    def __init__(self, name='', display_name='', category='', primary_keys=[], partition_by='', fields=[],
+    def __init__(self, name=None, display_name=None, category=None, partition_by=None, primary_keys=[], fields=[],
                  relationships=[], indexes=[]):
         self.name = name
         self.display_name = display_name
@@ -83,7 +62,9 @@ class GenieTable:
 
     def __eq__(self, other):
         return self.name == other.name and self.display_name == other.display_name \
-               and self.category == other.category and all(self.primary_keys[i] == other.primary_keys[i] for i in range(len(self.primary_keys))) \
-               and self.partition_by == other.partition_by and all(self.fields[i] == other.fields[i] for i in range(len(self.fields))) \
+               and self.category == other.category and all(
+            self.primary_keys[i] == other.primary_keys[i] for i in range(len(self.primary_keys))) \
+               and self.partition_by == other.partition_by and all(
+            self.fields[i] == other.fields[i] for i in range(len(self.fields))) \
                and all(self.relationships[i] == other.relationships[i] for i in range(len(self.relationships))) \
                and all(self.indexes[i] == other.indexes[i] for i in range(len(self.indexes)))
