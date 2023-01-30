@@ -25,14 +25,6 @@ class MetadataProcessor:
         :param table_type: table_type (DataLakeObject or DataModelObject or CalculatedInsights) for which we want tables metadata
         :return: Metadata of requested tables
         """
-        request_params = {}
-        if table_name is not None and table_name != '':
-            request_params['entityName'] = table_name
-        if table_category is not None and table_category != '':
-            request_params['entityCategory'] = table_category
-        if table_type is not None and table_type != '':
-            request_params['entityType'] = table_type
-
         tables_metadata_json = MetadataProcessor.__describe_table_result(connection)
         
         genie_table_list = MetadataProcessor.__convert_metadata_json_to_genie_table(tables_metadata_json)
@@ -146,6 +138,6 @@ class MetadataProcessor:
 
     @staticmethod
     @lru_cache()
-    def __describe_table_result(connection, request_params={}):
-        result = QuerySubmitter.get_metadata(connection, request_params)
+    def __describe_table_result(connection):
+        result = QuerySubmitter.get_metadata(connection)
         return result
