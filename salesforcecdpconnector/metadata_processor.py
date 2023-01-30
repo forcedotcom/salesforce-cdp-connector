@@ -12,8 +12,6 @@ from .constants import *
 
 
 class MetadataProcessor:
-    table_name_substring_to_table_type_map = {"CalculateInsight": "__cio", "DataLakeObject": "__dll",
-                                              "DataModelObject": "__dlm"}
 
     @staticmethod
     def list_tables(connection, table_name=None, table_category=None, table_type=None):
@@ -25,27 +23,17 @@ class MetadataProcessor:
         :param table_type: table_type (DataLakeObject or DataModelObject or CalculatedInsights) for which we want tables metadata
         :return: Metadata of requested tables
         """
-        tables_metadata_json = MetadataProcessor.__describe_table_result(connection)
-
-        genie_table_list = MetadataProcessor.__convert_metadata_json_to_genie_table(tables_metadata_json)
-        # iterate the list and return the result as expected
-        # First filter through the table_name
-        genie_table_list_filtered_with_params = genie_table_list.copy()
+        request_params = {}
         if table_name is not None:
-            for genie_table in genie_table_list:
-                if genie_table.name != table_name:
-                    genie_table_list_filtered_with_params.remove(genie_table)
-        # filter through the table_category
+            request_params['entityName'] = table_name
         if table_category is not None:
-            for genie_table in genie_table_list:
-                if genie_table.category != table_category:
-                    genie_table_list_filtered_with_params.remove(genie_table)
-        # filter through the table_type
+            request_params['entityCategory'] = table_category
         if table_type is not None:
-            for genie_table in genie_table_list:
-                if MetadataProcessor.table_name_substring_to_table_type_map[table_type] not in genie_table.name:
-                    genie_table_list_filtered_with_params.remove(genie_table)
-        return genie_table_list_filtered_with_params
+            request_params['entityType'] = table_type
+
+        tables_metadata_json = MetadataProcessor.__describe_table_result(connection, request_params)
+
+        return MetadataProcessor.__convert_metadata_json_to_genie_table(tables_metadata_json)
 
     @staticmethod
     def __convert_metadata_json_to_genie_table(tables_metadata_json):
@@ -144,7 +132,6 @@ class MetadataProcessor:
         return False
 
     @staticmethod
-    @lru_cache()
-    def __describe_table_result(connection):
-        result = QuerySubmitter.get_metadata(connection)
+    def __describe_table_result(connection, request_params={}):
+        result = QuerySubmitter.get_metadata(connection, request_params)
         return result

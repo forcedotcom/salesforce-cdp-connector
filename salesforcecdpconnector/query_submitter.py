@@ -63,14 +63,14 @@ class QuerySubmitter:
         return QuerySubmitter._get_next_batch_results(next_batch_id, instance_url, token, enable_arrow_stream)
 
     @staticmethod
-    def get_metadata(connection):
+    def get_metadata(connection, request_params={}):
         """
         This method fetches the metadata for a given tenant.
         :param connection:  SalesforceCDPConnection
         :return: Metadata for a given tenant
         """
         token, instance_url = connection.authentication_helper.get_token()
-        return QuerySubmitter.__get_metadata_results(instance_url, token)
+        return QuerySubmitter.__get_metadata_results(instance_url, token, request_params)
 
     @staticmethod
     def _get_query_results(query, instance_url, token, api_version='V2', enable_arrow_stream=False):
