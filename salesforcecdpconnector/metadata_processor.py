@@ -26,7 +26,7 @@ class MetadataProcessor:
         :return: Metadata of requested tables
         """
         tables_metadata_json = MetadataProcessor.__describe_table_result(connection)
-        
+
         genie_table_list = MetadataProcessor.__convert_metadata_json_to_genie_table(tables_metadata_json)
         # iterate the list and return the result as expected
         # First filter through the table_name
@@ -95,7 +95,14 @@ class MetadataProcessor:
                 genie_table.relationships = genie_table_relationships
 
             if GENIE_TABLE_INDEXES in table_metadata.keys():
-                genie_table.indexes = table_metadata[GENIE_TABLE_INDEXES]
+                if genie_table.indexes is None:
+                    genie_table.indexes = []
+                for index in table_metadata[GENIE_TABLE_INDEXES]:
+                    fields = []
+                    for json_field_obj in index[GENIE_TABLE_FIELDS]:
+                        field = Field(name=json_field_obj[FIELDS_NAME], type=json_field_obj[FIELDS_TYPE])
+                        fields.append(field)
+                    genie_table.indexes.append(Index(fields))
 
             fields = MetadataProcessor.__get_fields_of_genie_table(table_metadata)
             genie_table.fields = fields

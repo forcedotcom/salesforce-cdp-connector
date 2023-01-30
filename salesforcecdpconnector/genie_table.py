@@ -66,6 +66,18 @@ class Field:
         return str(self.__dict__)
 
 
+class Index:
+
+    def __init__(self, fields=[]):
+        self.fields = fields
+
+    def __repr__(self) -> str:
+        return str(self.__dict__)
+
+    def __str__(self) -> str:
+        return str(self.__dict__)
+
+
 class GenieTable:
 
     def __init__(self, name=None, display_name=None, category=None, partition_by=None, primary_keys=[], fields=[],
