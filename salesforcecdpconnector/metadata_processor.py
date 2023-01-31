@@ -105,8 +105,7 @@ class MetadataProcessor:
             for field in table_metadata[GENIE_TABLE_FIELDS]:
                 genie_table_field = Field(field[FIELDS_NAME], field[FIELDS_DISPLAY_NAME], field[FIELDS_TYPE])
                 genie_table_fields.append(genie_table_field)
-
-        elif MetadataProcessor.__is_cio_genie_table(table_metadata[GENIE_TABLE_NAME]):
+        else:
             if GENIE_TABLE_DIMENSIONS in table_metadata.keys():
                 for dimension in table_metadata[GENIE_TABLE_DIMENSIONS]:
                     genie_table_field_from_dimension = Field(dimension[FIELDS_NAME],
@@ -122,14 +121,7 @@ class MetadataProcessor:
                                                            measure[FIELDS_TYPE],
                                                            is_measure=True, is_dimension=False)
                     genie_table_fields.append(genie_table_field_from_measure)
-
         return genie_table_fields
-
-    @staticmethod
-    def __is_cio_genie_table(table_name):
-        if "cio" in table_name:
-            return True
-        return False
 
     @staticmethod
     def __describe_table_result(connection, request_params={}):
