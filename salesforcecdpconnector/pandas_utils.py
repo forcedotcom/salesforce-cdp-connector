@@ -6,11 +6,12 @@
 #
 
 import base64
+import decimal
 
 import dateutil.parser
 import pyarrow
 
-from .constants import API_VERSION_V2
+from .constants import API_VERSION_V2, DATA_TYPE_DECIMAL, DATA_TYPE_TIMESTAMP_WITH_TIMEZONE
 from .constants import QUERY_RESPONSE_KEY_DONE
 from .constants import QUERY_RESPONSE_KEY_NEXT_BATCH_ID
 from .constants import QUERY_RESPONSE_KEY_ARROW_STREAM
@@ -44,7 +45,10 @@ class PandasUtils:
 
         if len(arrow_stream_list) > 0:
             pandas_df = pyarrow.concat_tables(arrow_stream_list).to_pandas()
+            decimal_columns = PandasUtils._get_decimal_columns(result)
             date_columns = PandasUtils._get_date_columns(result)
+            for decimal_column in decimal_columns:
+                pandas_df = pandas_df.apply(lambda row: PandasUtils._convert_to_decimal(row, decimal_column), axis=1)
             for date_column in date_columns:
                 pandas_df = pandas_df.apply(lambda row: PandasUtils._convert_to_date(row, date_column), axis=1)
             return pandas_df
@@ -71,7 +75,31 @@ class PandasUtils:
         metadata_type = metadata_list[key][QUERY_RESPONSE_KEY_METADATA_TYPE]
         if metadata_type is not None:
             metadata_type = metadata_type.upper()
-        return metadata_type == DATA_TYPE_TIMESTAMP
+        return metadata_type == DATA_TYPE_TIMESTAMP or metadata_type == DATA_TYPE_TIMESTAMP_WITH_TIMEZONE
+
+    @staticmethod
+    def _get_decimal_columns(result):
+        metadata = result[QUERY_RESPONSE_KEY_METADATA]
+        decimal_columns = [x for x in metadata.keys() if PandasUtils._isdecimal(x, metadata)]
+        return decimal_columns
+
+    @staticmethod
+    def _isdecimal(key, metadata_list):
+        metadata_type = metadata_list[key][QUERY_RESPONSE_KEY_METADATA_TYPE]
+        if metadata_type is not None:
+            metadata_type = metadata_type.upper()
+        return metadata_type == DATA_TYPE_DECIMAL
+
+
+    @staticmethod
+    def _convert_to_decimal(row, column):
+        value = row[column]
+        if isinstance(value, decimal.Decimal):
+            row[column] = float(value)
+        else:
+            row[column] = None
+        return row
+
 
     @staticmethod
     def _get_pyarrow_table(encoded_arrow_stream):
