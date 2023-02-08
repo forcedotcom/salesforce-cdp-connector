@@ -10,7 +10,7 @@ import base64
 import dateutil.parser
 import pyarrow
 
-from .constants import API_VERSION_V2
+from .constants import API_VERSION_V2, DATA_TYPE_TIMESTAMP
 from .constants import QUERY_RESPONSE_KEY_DONE
 from .constants import QUERY_RESPONSE_KEY_NEXT_BATCH_ID
 from .constants import QUERY_RESPONSE_KEY_ARROW_STREAM
@@ -70,7 +70,7 @@ class PandasUtils:
         metadata_type = metadata_list[key][QUERY_RESPONSE_KEY_METADATA_TYPE]
         if metadata_type is not None:
             metadata_type = metadata_type.upper()
-        return metadata_type == DATA_TYPE_TIMESTAMP or metadata_type == DATA_TYPE_TIMESTAMP_WITH_TIMEZONE
+        return metadata_type == DATA_TYPE_TIMESTAMP
 
     @staticmethod
     def _get_pyarrow_table(encoded_arrow_stream):
