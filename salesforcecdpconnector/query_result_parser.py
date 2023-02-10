@@ -10,7 +10,7 @@ from .constants import QUERY_RESPONSE_KEY_DATA
 from .constants import QUERY_RESPONSE_KEY_METADATA
 from .constants import QUERY_RESPONSE_KEY_DONE
 from .constants import QUERY_RESPONSE_KEY_NEXT_BATCH_ID
-from .constants import DATA_TYPE_TIMESTAMP
+from .constants import DATA_TYPE_TIMESTAMP,DATA_TYPE_TIMESTAMP_WITH_TIMEZONE,DATA_TYPE_DECIMAL
 from .constants import QUERY_RESPONSE_KEY_PLACE_IN_ORDER
 from .parsed_query_result import QueryResult
 
@@ -47,10 +47,14 @@ class QueryResultParser:
         :return: None
         """
         for i in range(0, len(description)):
-            if description[i][1] == DATA_TYPE_TIMESTAMP:
+            if description[i][1] == DATA_TYPE_TIMESTAMP or description[i][1] == DATA_TYPE_TIMESTAMP_WITH_TIMEZONE:
                 for data_row in data:
                     if data_row[i] is not None and isinstance(data_row[i], str) and len(data_row[i]) > 0:
-                        data_row[i] = dateutil.parser.parse(data_row[i])
+                         data_row[i] = str(dateutil.parser.parse(data_row[i]))
+            elif description[i][1] == DATA_TYPE_DECIMAL:
+                for data_row in data:
+                    if data_row[i] is not None and isinstance(data_row[i], str) and len(data_row[i]) > 0:
+                        data_row[i] = float(data_row[i])
 
     @staticmethod
     def _convert_metadata_item_to_description_item(metadata_item):
