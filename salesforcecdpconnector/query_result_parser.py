@@ -50,7 +50,7 @@ class QueryResultParser:
             if description[i][1] == DATA_TYPE_TIMESTAMP or description[i][1] == DATA_TYPE_TIMESTAMP_WITH_TIMEZONE:
                 for data_row in data:
                     if data_row[i] is not None and isinstance(data_row[i], str) and len(data_row[i]) > 0:
-                        data_row[i] = str(dateutil.parser.parse(data_row[i]))
+                        data_row[i] = dateutil.parser.parse(data_row[i])
             elif description[i][1] == DATA_TYPE_DECIMAL:
                 for data_row in data:
                     if data_row[i] is not None and isinstance(data_row[i], str) and len(data_row[i]) > 0:
