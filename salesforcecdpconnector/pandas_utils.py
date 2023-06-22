@@ -104,7 +104,15 @@ class PandasUtils:
             return None
         stream_bytes = encoded_arrow_stream.encode(ENCODING_ASCII)
         decoded_bytes = base64.b64decode(stream_bytes)
-        return pyarrow.ipc.open_stream(decoded_bytes).read_all()
+        table = pyarrow.ipc.open_stream(decoded_bytes).read_all()
+        index = 0
+        schema_new = table.schema
+        for column in table.itercolumns():
+            if pyarrow.types.is_timestamp(column.type):
+                schema_new = table.schema.set(index, pyarrow.field(table.column_names[index], pyarrow.timestamp("ms", "UTC")))
+            index = index + 1
+        table = table.cast(target_schema=schema_new)
+        return table
 
     @staticmethod
     def _add_table_to_list(arrow_stream_list, arrow_stream):
