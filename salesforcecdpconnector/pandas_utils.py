@@ -9,6 +9,7 @@ import base64
 import decimal
 
 import dateutil.parser
+import pandas
 import pyarrow
 
 from .constants import API_VERSION_V2, DATA_TYPE_DECIMAL, DATA_TYPE_TIMESTAMP_WITH_TIMEZONE,DATA_TYPE_TIMESTAMP
@@ -47,21 +48,12 @@ class PandasUtils:
             date_columns = PandasUtils._get_date_columns(result)
             decimal_columns = PandasUtils._get_decimal_columns(result)
             for decimal_column in decimal_columns:
-                pandas_df = pandas_df.apply(lambda row: PandasUtils._convert_to_decimal(row, decimal_column), axis=1)
+                pandas_df[decimal_column] = pandas_df[decimal_column].astype(float)
             for date_column in date_columns:
-                pandas_df = pandas_df.apply(lambda row: PandasUtils._convert_to_date(row, date_column), axis=1)
+                pandas_df[date_column] = pandas.to_datetime(pandas_df[date_column])
             return pandas_df
 
         return None
-
-    @staticmethod
-    def _convert_to_date(row, column):
-        value = row[column]
-        if isinstance(value, str):
-            row[column] = dateutil.parser.parse(value)
-        else:
-            row[column] = None
-        return row
 
     @staticmethod
     def _get_date_columns(result):
@@ -90,21 +82,20 @@ class PandasUtils:
         return metadata_type == DATA_TYPE_DECIMAL
 
     @staticmethod
-    def _convert_to_decimal(row, column):
-        value = row[column]
-        if isinstance(value, decimal.Decimal):
-            row[column] = float(value)
-        else:
-            row[column] = None
-        return row
-
-    @staticmethod
     def _get_pyarrow_table(encoded_arrow_stream):
         if encoded_arrow_stream is None:
             return None
         stream_bytes = encoded_arrow_stream.encode(ENCODING_ASCII)
         decoded_bytes = base64.b64decode(stream_bytes)
-        return pyarrow.ipc.open_stream(decoded_bytes).read_all()
+        table = pyarrow.ipc.open_stream(decoded_bytes).read_all()
+        index = 0
+        schema_new = table.schema
+        for column in table.itercolumns():
+            if pyarrow.types.is_timestamp(column.type):
+                schema_new = schema_new.set(index, pyarrow.field(table.column_names[index], pyarrow.timestamp("ms", "UTC")))
+            index = index + 1
+        table = table.cast(target_schema=schema_new)
+        return table
 
     @staticmethod
     def _add_table_to_list(arrow_stream_list, arrow_stream):
