@@ -80,14 +80,17 @@ class SalesforceCDPCursor:
             next_row = self.data.pop(0)
             return next_row
         elif self.has_next is True:
-            json_results = QuerySubmitter.get_next_batch(self.connection, self.next_batch_id)
-            results = QueryResultParser.parse_result(json_results)
-            self.description = results.description
-            self.data = results.data
-            self.has_next = results.has_next
-            self.next_batch_id = results.next_batch_id
-            next_row = self.data.pop(0)
-            return next_row
+            while self.has_next is True and (self.data is None or len(self.data) == 0):
+                json_results = QuerySubmitter.get_next_batch(self.connection, self.next_batch_id)
+                results = QueryResultParser.parse_result(json_results)
+                self.description = results.description
+                self.data = results.data
+                self.has_next = results.has_next
+                self.next_batch_id = results.next_batch_id
+            if self.data is not None and len(self.data) > 0:
+                return self.data.pop(0)
+            else:
+                return None
         else:
             self.has_result = False
             return None
