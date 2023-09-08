@@ -10,6 +10,7 @@ from .constants import MAX_RETRY_COUNT
 from .cursor import SalesforceCDPCursor
 from .exceptions import Error
 from .pandas_utils import PandasUtils
+from .metadata_processor import MetadataProcessor
 
 apilevel = "2.0"
 threadsafety = 2
@@ -52,6 +53,15 @@ class SalesforceCDPConnection:
         if self.closed:
             raise Error('Cannot create dataframe. Connection is closed')
         return PandasUtils.get_dataframe(self, query)
+
+    def list_tables(self, table_name=None, table_category=None, table_type=None):
+        """
+        Returns the genie table list
+        :return: Query Results as Table list
+        """
+        if self.closed:
+            raise Error('Cannot create table list. Connection is closed')
+        return MetadataProcessor.list_tables(self, table_name, table_category, table_type)
 
     def close(self):
         """

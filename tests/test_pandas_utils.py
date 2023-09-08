@@ -77,6 +77,28 @@ class MyTestCase(unittest.TestCase):
                        "DIxLTA5LTE2VDE2OjI2OjM2LjAwMFr/////AAAAAA=="
     }
 
+    call_arrow_without_string_conversion = {
+        "startTime": "2022-03-08T09:14:24.089261Z",
+        "endTime": "2022-03-08T09:14:30.044897Z",
+        "rowCount": 1,
+        "queryId": "20220308_091425_01733_5frmm",
+        "nextBatchId": "408e58c2-3a92-40bc-85e9-6356556185b2",
+        "done": True,
+        "metadata": {
+            "TimestampWithTimezone": {
+                "type": "TimestampWithTimezone",
+                "placeInOrder": 1,
+                "typeCode": 0
+            }
+        },
+        "arrowStream": "/////7AAAAAQAAAAAAAKAA4ABgANAAgACgAAAAAABAAQAAAAAAEKAAwAAAAIAAQACgAAAAgAAAAI"
+                       "AAAAAAAAAAEAAAAYAAAAAAASABgAFAATABIADAAAAAgABAASAAAAFAAAABQAAAAcAAAAAAAKASgA"
+                       "AAAAAAAAAAAAAAgADAAKAAQACAAAAAgAAAAAAAEAAQAAAFoAAAAVAAAAVGltZXN0YW1wV2l0aFRp"
+                       "bWV6b25lAAAAAAAAAP////+IAAAAFAAAAAAAAAAMABYADgAVABAABAAMAAAAEAAAAAAAAAAAAAQA"
+                       "EAAAAAADCgAYAAwACAAEAAoAAAAUAAAAOAAAAAEAAAAAAAAAAAAAAAIAAAAAAAAAAAAAAAEAAAAA"
+                       "AAAACAAAAAAAAAAIAAAAAAAAAAAAAAABAAAAAQAAAAAAAAAAAAAAAAAAAAEAAAAAAAAAUKAR+oQB"
+                       "AAD/////AAAAAA== "
+    }
     @patch.object(QuerySubmitter, 'get_next_batch', return_value=call2)
     @patch.object(QuerySubmitter, 'execute', return_value=call1)
     def test_get_dataframe(self, mock1, mock2):
@@ -86,6 +108,13 @@ class MyTestCase(unittest.TestCase):
         self.assertListEqual(dataframe.columns.tolist(), ['ssot__FirstName__c', 'ssot__LastModifiedDate__c'])
         self.assertEqual(dataframe.dtypes['ssot__LastModifiedDate__c'].base.name, 'datetime64[ns]')
 
+    @patch.object(QuerySubmitter, 'execute', return_value=call_arrow_without_string_conversion)
+    def test_data_frame_with_modified_date_time(self, mock1):
+        connection = SalesforceCDPConnection('url', 'username', 'password', 'client_id', 'client_secret')
+        dataframe = connection.get_pandas_dataframe('select * from UnifiedIndividuals__dlm')
+        self.assertEqual(len(dataframe), 1)  # add assertion here
+        self.assertListEqual(dataframe.columns.tolist(), ['TimestampWithTimezone'])
+        self.assertEqual(dataframe.dtypes['TimestampWithTimezone'].base.name, 'datetime64[ns]')
 
 if __name__ == '__main__':
     unittest.main()
