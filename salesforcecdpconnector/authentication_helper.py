@@ -22,11 +22,19 @@ from .constants import RETRY_DELAY_MIN_SECONDS
 from .constants import RETRY_DELAY_MAX_SECONDS
 from .exceptions import Error
 from datetime import datetime, timedelta
-from threading import Lock
+import socket
 import time
+from threading import Lock
 import random
 
 import requests
+
+
+def allowed_gai_family():
+    return socket.AF_INET
+
+
+requests.packages.urllib3.util.connection.allowed_gai_family = allowed_gai_family
 
 
 class AuthenticationHelper:
@@ -37,6 +45,7 @@ class AuthenticationHelper:
         self.token_expiry_time = None
         self.connection = connection
         self.lock = Lock()
+        self.session = requests.session()
 
     def get_token(self):
         """
@@ -103,14 +112,14 @@ class AuthenticationHelper:
                   AUTH_PARAM_CDP_SUBJECT_TOKEN_TYPE: AUTH_PARAM_CDP_SUBJECT_TOKEN_TYPE_VALUE,
                   AUTH_PARAM_CDP_SUBJECT_TOKEN: core_token}
         current_time = datetime.now()
-        access_code_res = requests.post(url=login_url + '/services/a360/token', params=params)
+        access_code_res = self.session.post(url=login_url + '/services/a360/token', params=params)
         if access_code_res.status_code == 200:
             access_code = access_code_res.json()
             access_token = access_code[AUTH_RESPONSE_ACCESS_TOKEN]
             expires_in_seconds = access_code[AUTH_RESPONSE_EXPIRES_IN]
             instance_url = access_code[AUTH_RESPONSE_INSTANCE_URL]
             token_expiry_time = current_time + timedelta(seconds=expires_in_seconds)
-            AuthenticationHelper._revoke_core_token(login_url, core_token)
+            self._revoke_core_token(login_url, core_token)
         else:
             raise Error('CDP token retrieval failed with code %d' % access_code_res.status_code)
         self.exchange_token = access_token
@@ -118,8 +127,7 @@ class AuthenticationHelper:
         self.instance_url = instance_url
         return access_token, instance_url
 
-    @staticmethod
-    def _revoke_core_token(login_url, core_token):
+    def _revoke_core_token(self, login_url, core_token):
         """
         Revokes the core token
         :param login_url: The login URL
@@ -127,7 +135,7 @@ class AuthenticationHelper:
         :return:
         """
         params = {'token': core_token}
-        requests.post(url=login_url + '/services/oauth2/revoke', params=params)
+        self.session.post(url=login_url + '/services/oauth2/revoke', params=params)
 
     def _renew_token(self, login_url, refresh_token, client_id, client_secret):
         """
@@ -143,7 +151,7 @@ class AuthenticationHelper:
                   AUTH_PARAM_CLIENT_ID: client_id,
                   AUTH_PARAM_CLIENT_SECRET: client_secret,
                   AUTH_PARAM_REFRESH_TOKEN_GRANT_TYPE: refresh_token}
-        access_code_res = requests.post(url=login_url + '/services/oauth2/token', params=params)
+        access_code_res = self.session.post(url=login_url + '/services/oauth2/token', params=params)
         if access_code_res.status_code == 200:
             access_code = access_code_res.json()
             core_token = access_code[AUTH_RESPONSE_ACCESS_TOKEN]
@@ -165,7 +173,7 @@ class AuthenticationHelper:
         params = {AUTH_PARAM_GRANT_TYPE: AUTH_PARAM_P_D, AUTH_PARAM_CLIENT_ID: client_id,
                   AUTH_PARAM_CLIENT_SECRET: client_secret,
                   AUTH_PARAM_USERNAME: username, AUTH_PARAM_P_D: password}
-        access_code_res = requests.post(url=login_url + '/services/oauth2/token', params=params)
+        access_code_res = self.session.post(url=login_url + '/services/oauth2/token', params=params)
         if access_code_res.status_code == 200:
             access_code = access_code_res.json()
             core_token = access_code[AUTH_RESPONSE_ACCESS_TOKEN]
