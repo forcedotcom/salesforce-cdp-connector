@@ -84,6 +84,52 @@ class MyTestCase(unittest.TestCase):
         }
     }
 
+    empty_batch_intermediate = {
+        "data": [
+        ],
+        "startTime": "2022-03-07T19:57:19.374525Z",
+        "endTime": "2022-03-07T19:57:20.063372Z",
+        "rowCount": 3,
+        "queryId": "20220307_195719_00109_5frjj",
+        "nextBatchId": "fa489494-ff42-45ce-afd6-b838854b5a99",
+        "done": False,
+        "metadata": {
+            "ssot__FirstName__c": {
+                "type": "VARCHAR",
+                "placeInOrder": 0,
+                "typeCode": 12
+            },
+            "ssot__LastModifiedDate__c": {
+                "type": "TIMESTAMP",
+                "placeInOrder": 1,
+                "typeCode": 93
+            }
+        }
+    }
+
+    empty_batch_last = {
+        "data": [
+        ],
+        "startTime": "2022-03-07T19:57:19.374525Z",
+        "endTime": "2022-03-07T19:57:20.063372Z",
+        "rowCount": 3,
+        "queryId": "20220307_195719_00109_5frjj",
+        "nextBatchId": "fa489494-ff42-45ce-afd6-b838854b5a99",
+        "done": True,
+        "metadata": {
+            "ssot__FirstName__c": {
+                "type": "VARCHAR",
+                "placeInOrder": 0,
+                "typeCode": 12
+            },
+            "ssot__LastModifiedDate__c": {
+                "type": "TIMESTAMP",
+                "placeInOrder": 1,
+                "typeCode": 93
+            }
+        }
+    }
+
     @patch.object(QuerySubmitter, 'get_next_batch', return_value=call2)
     @patch.object(QuerySubmitter, 'execute', return_value=call1)
     def test_execute(self, mock1, mock2):
@@ -105,6 +151,27 @@ class MyTestCase(unittest.TestCase):
             all_records.append(cursor.fetchone())
         self.assertEqual(len(all_records), 6)
 
+    @patch.object(QuerySubmitter, 'get_next_batch', side_effect=(empty_batch_intermediate, call2))
+    @patch.object(QuerySubmitter, 'execute', return_value=call1)
+    def test_fetchoneendingwithemptybatch_intermediate(self, mock1, mock2):
+        connection = SalesforceCDPConnection('login_url', 'username', 'password', 'client_id', 'client_secret')
+        cursor = connection.cursor()
+        cursor.execute("select * from UnifiedIndividuals__dlm")
+        all_records = []
+        for i in range(1, 8):
+            all_records.append(cursor.fetchone())
+        self.assertEqual(len(all_records), 7)
+
+    @patch.object(QuerySubmitter, 'get_next_batch', side_effect=(empty_batch_last,))
+    @patch.object(QuerySubmitter, 'execute', return_value=call1)
+    def test_fetchoneendingwithemptybatch_last(self, mock1, mock2):
+        connection = SalesforceCDPConnection('login_url', 'username', 'password', 'client_id', 'client_secret')
+        cursor = connection.cursor()
+        cursor.execute("select * from UnifiedIndividuals__dlm")
+        all_records = []
+        for i in range(1, 5):
+            all_records.append(cursor.fetchone())
+        self.assertEqual(len(all_records), 4)
 
 if __name__ == '__main__':
     unittest.main()
