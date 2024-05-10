@@ -155,5 +155,12 @@ class MyTestCase(unittest.TestCase):
         self.assertEqual(len(all_records), 3)
         cursor.close()
 
+    def test_params_fail(self):
+        connection = SalesforceCDPConnection('login_url', 'username', 'password', 'client_id', 'client_secret')
+        cursor = connection.cursor()
+        with self.assertRaises(Exception) as context:
+            cursor.execute("select * from UnifiedIndividuals__dlm where col__c = ?", ['test'])
+        self.assertTrue("Parameters are not supported" in context.exception.args)
+
 if __name__ == '__main__':
     unittest.main()

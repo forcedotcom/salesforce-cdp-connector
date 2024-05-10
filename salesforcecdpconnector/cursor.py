@@ -158,13 +158,8 @@ class SalesforceCDPCursor:
         if params is None and params_count_from_query == 0:
             return query
 
-        if self._is_iterable(params) and params_count_from_query == len(params):
-            for param in params:
-                query = self._replace_next_param(query, param)
-        elif params_count_from_query == 1 and params is not None:
-            query = self._replace_next_param(query, params)
-        else:
-            raise Exception('Parameter count not matching')
+        if params:
+            raise Exception('Parameters are not supported')
 
         return query
 
