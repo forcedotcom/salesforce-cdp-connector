@@ -207,7 +207,6 @@ class AuthenticationHelper:
         params = {AUTH_PARAM_GRANT_TYPE: AUTH_PARAM_JWT_GRANT_TYPE, AUTH_PARAM_ASSERTION: encoded}
         access_code_res = self.session.post(url=login_url + '/services/oauth2/token', params=params)
 
-        print(access_code_res)
         if access_code_res.status_code == 200:
             access_code = access_code_res.json()
             core_token = access_code[AUTH_RESPONSE_ACCESS_TOKEN]
