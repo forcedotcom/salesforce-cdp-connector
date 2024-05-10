@@ -12,11 +12,13 @@ from .constants import AUTH_PARAM_CDP_SUBJECT_TOKEN
 from .constants import AUTH_RESPONSE_ACCESS_TOKEN
 from .constants import AUTH_RESPONSE_EXPIRES_IN
 from .constants import AUTH_RESPONSE_INSTANCE_URL
+from .constants import AUTH_PARAM_JWT_GRANT_TYPE
 from .constants import AUTH_PARAM_REFRESH_TOKEN_GRANT_TYPE
 from .constants import AUTH_PARAM_CLIENT_ID
 from .constants import AUTH_PARAM_CLIENT_SECRET
 from .constants import AUTH_PARAM_P_D
 from .constants import AUTH_PARAM_USERNAME
+from .constants import AUTH_PARAM_ASSERTION
 from .constants import MAX_RETRY_COUNT
 from .constants import RETRY_DELAY_MIN_SECONDS
 from .constants import RETRY_DELAY_MAX_SECONDS
@@ -26,7 +28,7 @@ import socket
 import time
 from threading import Lock
 import random
-
+import jwt
 import requests
 
 
@@ -91,6 +93,9 @@ class AuthenticationHelper:
                 return self._token_by_un_pwd_flow(self.connection.login_url, self.connection.client_id,
                                                   self.connection.client_secret, self.connection.username,
                                                   self.connection.password)
+            elif self.connection.private_key is not None:
+                return self._token_by_jwt_bearer_flow(self.connection.login_url, self.connection.username,
+                                                      self.connection.client_id, self.connection.private_key)
             else:
                 raise Error('Sufficient information is not available for authentication')
         finally:
@@ -174,6 +179,35 @@ class AuthenticationHelper:
                   AUTH_PARAM_CLIENT_SECRET: client_secret,
                   AUTH_PARAM_USERNAME: username, AUTH_PARAM_P_D: password}
         access_code_res = self.session.post(url=login_url + '/services/oauth2/token', params=params)
+        if access_code_res.status_code == 200:
+            access_code = access_code_res.json()
+            core_token = access_code[AUTH_RESPONSE_ACCESS_TOKEN]
+            org_url = access_code[AUTH_RESPONSE_INSTANCE_URL]
+            return self._exchange_token(org_url, core_token)
+        else:
+            raise Error('Core token retrieval failed with code %d' % access_code_res.status_code)
+        
+    def _token_by_jwt_bearer_flow(self, login_url, username, client_id, private_key):
+        """
+        This function fetches the core token
+        :param login_url: The Login URL for the tenant
+        :param private_key: The private key as utf8 text
+        :return: cdp_token, instance_url will be returned
+        """
+
+        payload = {
+            'iss': client_id,
+            'exp': int(time.time()) + 3600,
+            'aud': login_url,
+            'sub': username
+        }
+            
+        encoded = jwt.encode(payload, private_key, algorithm='RS256')
+
+        params = {AUTH_PARAM_GRANT_TYPE: AUTH_PARAM_JWT_GRANT_TYPE, AUTH_PARAM_ASSERTION: encoded}
+        access_code_res = self.session.post(url=login_url + '/services/oauth2/token', params=params)
+
+        print(access_code_res)
         if access_code_res.status_code == 200:
             access_code = access_code_res.json()
             core_token = access_code[AUTH_RESPONSE_ACCESS_TOKEN]

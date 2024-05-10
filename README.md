@@ -18,6 +18,20 @@ We have to create an instance of the SalesforceCDPConnection to connect to CDP.
 
 The object can be created as follows:
 
+**Using JWT**
+```
+from salesforcecdpconnector.connection import SalesforceCDPConnection
+
+fd = open('./salesforce.key');
+your_key = fd.read()
+
+conn = SalesforceCDPConnection(login_url, 
+       client_id='<client_id>', 
+       username='<username>', 
+       private_key=your_key
+   )
+```
+
 **Using Username and Password**
 ```
 from salesforcecdpconnector.connection import SalesforceCDPConnection
