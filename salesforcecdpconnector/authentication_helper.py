@@ -191,6 +191,8 @@ class AuthenticationHelper:
         """
         This function fetches the core token
         :param login_url: The Login URL for the tenant
+        :param username: Tenant username
+        :param client_id: The client id for the connected app
         :param private_key: The private key as utf8 text
         :return: cdp_token, instance_url will be returned
         """
