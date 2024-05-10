@@ -14,7 +14,7 @@ from .metadata_processor import MetadataProcessor
 
 apilevel = "2.0"
 threadsafety = 2
-paramstyle = "qmark"
+paramstyle = None
 
 
 class SalesforceCDPConnection:

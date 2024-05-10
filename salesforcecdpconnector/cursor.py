@@ -16,11 +16,6 @@ class SalesforceCDPCursor:
     This class represents the cursor
     """
 
-    _TRANSLATION_TABLE = str.maketrans({"\\": r"\\",
-                                        "\n": r"\\n",
-                                        "\r": r"\\r",
-                                        "'": r"\'"})
-
     def __init__(self, connection):
         self.arraysize = 1
         self.description = None
@@ -154,30 +149,8 @@ class SalesforceCDPCursor:
             raise Error('Attempting operation while connection is closed')
 
     def _resolve_query_with_params(self, query, params):
-        params_count_from_query = query.count('?')
-        if params is None and params_count_from_query == 0:
-            return query
-
-        if self._is_iterable(params) and params_count_from_query == len(params):
-            for param in params:
-                query = self._replace_next_param(query, param)
-        elif params_count_from_query == 1 and params is not None:
-            query = self._replace_next_param(query, params)
-        else:
-            raise Exception('Parameter count not matching')
-
-        return query
-
-    def _replace_next_param(self, query, param):
-        if param is None:
-            query = query.replace('?', 'null', 1)
-        elif self._is_numeric(param):
-            query = query.replace('?', str(param), 1)
-        else:
-            if not isinstance(param, str):
-                param = str(param)
-            param = param.translate(self._TRANSLATION_TABLE)
-            query = query.replace('?', f"'{str(param)}'", 1)
+        if params:
+            raise Exception('Parameters are not supported')
         return query
 
     def _is_iterable(self, param):
