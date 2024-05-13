@@ -15,6 +15,8 @@ import responses
 from salesforcecdpconnector.authentication_helper import AuthenticationHelper
 from salesforcecdpconnector.connection import SalesforceCDPConnection
 
+from cryptography.hazmat.primitives.asymmetric import rsa
+
 
 class TestAuthenticationHelper(unittest.TestCase):
     core_response = {
@@ -33,6 +35,11 @@ class TestAuthenticationHelper(unittest.TestCase):
         "issued_token_type": "tokentype",
         "expires_in": 1000
     }
+
+    def _generate_public_private_key_pair(self):
+        private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+        public_key = private_key.public_key()
+        return (public_key, private_key)
 
     @responses.activate
     def test_token_by_un_pwd_flow(self):
@@ -71,7 +78,13 @@ class TestAuthenticationHelper(unittest.TestCase):
             'status': 200
         })
 
-        connection = SalesforceCDPConnection('https://login.salesforce.com', 'clientId', 'username', 'privateKey')
+        (public_key, private_key) = self._generate_public_private_key_pair()
+
+        connection = SalesforceCDPConnection(login_url='https://login.salesforce.com',  
+                                            client_id='clientId', 
+                                            username='username', 
+                                            private_key=private_key)
+
         authenticationHelper = AuthenticationHelper(connection)
         token, instanceUrl = authenticationHelper.get_token()
 
