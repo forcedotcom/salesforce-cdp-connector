@@ -23,7 +23,7 @@ class SalesforceCDPConnection:
     """
 
     def __init__(self, login_url, username=None, password=None, client_id=None, client_secret=None,
-                 api=API_VERSION_V2, core_token=None, refresh_token=None, max_retries=MAX_RETRY_COUNT):
+                 api=API_VERSION_V2, core_token=None, refresh_token=None, private_key=None, max_retries=MAX_RETRY_COUNT):
         self.login_url = login_url
         self.username = username
         self.password = password
@@ -32,6 +32,7 @@ class SalesforceCDPConnection:
         self.api = api
         self.core_token = core_token
         self.refresh_token = refresh_token
+        self.private_key = private_key
         self.closed = False
         self.authentication_helper = AuthenticationHelper(self)
         self.max_retries = max_retries
@@ -76,6 +77,7 @@ class SalesforceCDPConnection:
         self.client_secret = None
         self.core_token = None
         self.refresh_token = None
+        self.private_key = None
         self.authentication_helper = None
         self.closed = True
 
