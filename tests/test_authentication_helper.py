@@ -56,7 +56,8 @@ class TestAuthenticationHelper(unittest.TestCase):
             'status': 200
         })
 
-        connection = SalesforceCDPConnection('https://login.salesforce.com', 'username', 'password', 'clientId', 'clientSecret')
+        connection = SalesforceCDPConnection(
+            'https://login.salesforce.com', 'username', 'password', 'clientId', 'clientSecret')
         authenticationHelper = AuthenticationHelper(connection)
         token, instanceUrl = authenticationHelper.get_token()
 
