@@ -103,3 +103,44 @@ dataframe = conn.get_pandas_dataframe('<query>')
    <LOGIN_URL>/services/oauth2/token?code=<CODE>&grant_type=authorization_code&client_id=<clientId>&client_secret=<clientSecret>&redirect_uri=<callback_uri>
    ```
    2. The response to the above post call will be a json with access_token and refresh_token
+
+## Developing
+
+### Install UV for dependency management
+
+https://docs.astral.sh/uv/getting-started/installation/
+
+### Download dependencies
+
+```shell
+uv sync --all-extras --dev
+```
+
+### Build the project
+
+```shell
+uv build
+```
+
+### Test the project
+
+```shell
+uv run pytest
+```
+
+### Bump dependencies
+
+```shell
+uv sync --resolution highest
+```
+
+### Functionally test the project
+
+First you'll need to follow the instructions [above](#Creating-a-connected-App)
+Now you'll need to add the appropriate values to a .env file which you can make like so: `cp .env.template .env`
+
+Now you can run the following (where the version in the .whl path is correct) and expect a query result, we also expect "salesforce" to not be present in example.py.lock
+
+```shell
+uv run --isolated --script example.py --with dist/salesforce_cdp_connector-1.0.16-py3-none-any.whl 
+```

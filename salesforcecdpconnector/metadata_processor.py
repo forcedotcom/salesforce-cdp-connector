@@ -22,7 +22,7 @@ class MetadataProcessor:
         :param table_category: table_category( Related, Engagement, Profile) for which we want tables metadata
         :param table_type: table_type (DataLakeObject or DataModelObject or CalculatedInsights) for which we want tables metadata
         :return: Metadata of requested tables
-        """
+        """ # noqa: E501
         request_params = {}
         if table_name is not None:
             request_params['entityName'] = table_name

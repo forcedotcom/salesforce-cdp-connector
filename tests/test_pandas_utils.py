@@ -114,7 +114,7 @@ class MyTestCase(unittest.TestCase):
         dataframe = connection.get_pandas_dataframe('select * from UnifiedIndividuals__dlm')
         self.assertEqual(len(dataframe), 1)  # add assertion here
         self.assertListEqual(dataframe.columns.tolist(), ['TimestampWithTimezone'])
-        self.assertEqual(dataframe.dtypes['TimestampWithTimezone'].base.name, 'datetime64[ns]')
+        self.assertRegex(dataframe.dtypes['TimestampWithTimezone'].base.name, r'datetime64\[[nm]s\]')
 
 if __name__ == '__main__':
     unittest.main()

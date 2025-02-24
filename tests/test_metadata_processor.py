@@ -635,7 +635,8 @@ class MyTestCase(unittest.TestCase):
         genie_table_list_returned_with_table_type = connection.list_tables(table_name=None,
                                                                            table_category=None,
                                                                            table_type='DataModelObject')
-        self.assertEqual(genie_table_list_returned_with_table_type, [self.table_entry_3, self.table_entry_4, self.table_entry_5])
+        self.assertEqual(genie_table_list_returned_with_table_type, 
+                         [self.table_entry_3, self.table_entry_4, self.table_entry_5])
 
 
 if __name__ == '__main__':
