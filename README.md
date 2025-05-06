@@ -55,18 +55,6 @@ conn = SalesforceCDPConnection(login_url,
    )
 ```
 
-**Skip CDP Token Exchange** (Optional)
-```
-from salesforcecdpconnector.connection import SalesforceCDPConnection
-conn = SalesforceCDPConnection(login_url, 
-       client_id='<client_id>', 
-       client_secret='<client_secret>', 
-       core_token='<core token>'
-       refresh_token='<refresh_token>',
-       skip_exchange=True  # Use core token directly without exchanging for CDP token
-   )
-```
-
 Once the connection object is created the queries can be executed using cursor as follows
 
 ```

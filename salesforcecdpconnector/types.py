@@ -1,5 +1,3 @@
-# salesforce_cdp_connector/types.py
-
 from datetime import datetime
 import decimal
 

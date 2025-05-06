@@ -1,5 +1,3 @@
-# salesforce_cdp_connector/dbapi.py
-
 import time
 from typing import Optional, Union, Sequence, Dict, Any, List, Tuple
 from loguru import logger

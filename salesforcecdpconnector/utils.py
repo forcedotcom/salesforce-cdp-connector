@@ -1,5 +1,3 @@
-# salesforce_cdp_connector/utils.py
-
 from loguru import logger
 
 def clean_login_url(login_url: str) -> str:

@@ -42,10 +42,10 @@ class PasswordGrantAuth(AuthHandler):
         self._token = None
         self._instance_url = None
         self._token_created_at = None
-        self._session = requests.Session() # Use session for potential keep-alive
+        self._session = requests.Session()
 
     def authenticate(self) -> None:
-        logger.info(f"Attempting authentication for domain: {self.domain}, user: {self.username}")
+        logger.debug(f"Attempting authentication for domain: {self.domain}, user: {self.username}")
         auth_url = f"https://{self.domain}/services/oauth2/token"
         data = {
             "grant_type": "password",
@@ -60,7 +60,7 @@ class PasswordGrantAuth(AuthHandler):
         }
         try:
             response = self._session.post(url=auth_url, data=data, headers=headers)
-            response.raise_for_status() # Raises HTTPError for bad responses (4xx or 5xx)
+            response.raise_for_status()
             auth_data = response.json()
             self._token = auth_data["access_token"]
             self._instance_url = auth_data["instance_url"]
@@ -69,7 +69,7 @@ class PasswordGrantAuth(AuthHandler):
             if self._instance_url.endswith('/'):
                 self._instance_url = self._instance_url[:-1]
             self._token_created_at = datetime.now()
-            logger.info(f"Authentication successful. Instance URL: {self._instance_url}")
+            logger.debug(f"Authentication successful. Instance URL: {self._instance_url}")
 
         except HTTPError as e:
             logger.error(f"Authentication HTTP error: {e}")
@@ -93,21 +93,20 @@ class PasswordGrantAuth(AuthHandler):
     def ensure_valid_token(self) -> None:
         """Checks token validity and re-authenticates if expired."""
         if not self._is_token_valid():
-            logger.info("Auth token expired or invalid, re-authenticating.")
-            self.authenticate() # Re-authenticate to refresh
+            logger.debug("Auth token expired or invalid, re-authenticating.")
+            self.authenticate()
 
     def get_headers(self) -> dict:
-        self.ensure_valid_token() # Make sure token is valid before returning headers
+        self.ensure_valid_token()
         if not self._token:
              raise AuthenticationError("Cannot get headers, authentication token is missing.")
         return {
             "Authorization": f"Bearer {self._token}",
-            "Accept": "application/json" # Common requirement for APIs
+            "Accept": "application/json"
         }
 
     def get_instance_url(self) -> str:
         if not self._instance_url:
-             # Try to authenticate if URL not set yet
              self.ensure_valid_token()
              if not self._instance_url:
                  raise AuthenticationError("Cannot get instance URL, authentication failed or not performed.")

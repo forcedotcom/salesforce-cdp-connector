@@ -1,5 +1,3 @@
-# salesforce_cdp_connector/client.py
-
 import requests
 import json
 from loguru import logger
@@ -9,11 +7,8 @@ from .auth import AuthHandler
 from .exceptions import ApiError, QueryError, AuthenticationError
 from .constants import DEFAULT_API_VERSION
 
-# Placeholder for potential response models
-# from .models import QueryStatusResponse, QueryResultResponse
-
 class SalesforceCDPClient:
-    """Handles low-level communication with the Salesforce CDP API."""
+    """Handles low-level communication with the Salesforce Datacloud."""
 
     def __init__(self, auth_handler: AuthHandler, api_version: str = DEFAULT_API_VERSION):
         self.auth = auth_handler
@@ -59,7 +54,7 @@ class SalesforceCDPClient:
             response = self.session.request(method, full_url, headers=headers, **kwargs)
             response.raise_for_status() # Raise HTTPError for 4xx/5xx
 
-            # Handle cases where response might be empty (e.g., 204 No Content)
+            # Handle cases where response might be empty
             if response.status_code == 204 or not response.content:
                 return {}
 
@@ -72,15 +67,13 @@ class SalesforceCDPClient:
             logger.error(f"API HTTP error: {method} {full_url} -> Status {status_code}")
             logger.error(f"Response content: {content}")
 
-             # Check for auth token expiry specifically if possible (e.g., 401/403)
+            # Check for auth token expiry specifically if possible (e.g., 401/403)
             if status_code in (401, 403):
                  # Could potentially try one refresh here, but safer to raise
                  raise AuthenticationError(f"API request failed, possibly expired token ({status_code}): {content}", http_error=e) from e
-            # Use ApiError for general operational issues, QueryError if it's clearly a query syntax issue
-            # Salesforce might return specific error codes in the JSON body for query errors
+            
             try:
                 error_details = json.loads(content) if content else {}
-                # Example: Check for Salesforce specific error format
                 if isinstance(error_details, list) and error_details:
                     message = error_details[0].get('message', str(e))
                     error_code = error_details[0].get('errorCode', 'UNKNOWN')

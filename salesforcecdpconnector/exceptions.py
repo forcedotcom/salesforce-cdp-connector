@@ -1,5 +1,3 @@
-# salesforce_cdp_connector/exceptions.py
-
 import requests.exceptions
 
 # PEP 249 Standard Exceptions
