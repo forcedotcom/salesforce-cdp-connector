@@ -1,9 +1,6 @@
 from datetime import datetime
 import decimal
 
-# PEP 249 Type Objects
-# https://peps.python.org/pep-0249/#type-objects
-
 STRING = str
 BINARY = bytes
 NUMBER = decimal.Decimal # Use Decimal for precision

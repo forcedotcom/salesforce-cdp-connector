@@ -3,7 +3,7 @@ from typing import Optional, Union, Sequence, Dict, Any, List, Tuple
 from loguru import logger
 
 from .client import SalesforceCDPClient
-from .auth import PasswordGrantAuth
+from .auth import PasswordGrantAuth, ClientCredentialsAuth
 from .exceptions import (
     Warning, Error, InterfaceError, DatabaseError, DataError,
     OperationalError, IntegrityError, InternalError, ProgrammingError,
@@ -16,8 +16,6 @@ from .constants import DEFAULT_ROW_LIMIT, DEFAULT_API_VERSION, DEFAULT_TOKEN_TIM
 apilevel = "2.0"
 threadsafety = 1 # Threads may share the module, but not connections. Check Salesforce API concurrency limits.
 paramstyle = 'named'
-
-# --- Connection Object ---
 
 class Connection:
     """PEP 249 Connection object for Salesforce CDP."""
@@ -89,8 +87,6 @@ class Connection:
         # Always close the connection
         self.close()
 
-
-# --- Cursor Object ---
 
 class Cursor:
     """PEP 249 Cursor object for Salesforce CDP."""
@@ -187,7 +183,6 @@ class Cursor:
                  error_msg = status_info.get('error', 'Query failed without specific error message.')
                  raise self._connection.QueryError(f"Query execution failed: {error_msg} (Query ID: {self._query_id})")
 
-
             self._metadata = response.get('metadata')
             self._parse_description() # Sets self._description
 
@@ -196,16 +191,34 @@ class Cursor:
             self._rows_buffer.extend(self._data_to_tuples(initial_data))
 
             returned_rows = response.get('returnedRows', len(initial_data))
-            self._next_offset = returned_rows # Start fetching after these rows
+            total_rows = response.get('totalRows')
+            next_offset = response.get('nextOffset')
+            
+            # Set the next offset for potential future fetches
+            self._next_offset = returned_rows
 
-            # Determine if finished based on state or presence of nextOffset/totalRows
-            self._query_finished = (query_state == 'FINISHED')
-            # Alternative: Check if nextOffset indicates end (e.g., nextOffset == totalRows)
-            # next_offset_from_resp = response.get('nextOffset') # API might use different key
-            # total_rows = response.get('totalRows')
-            # if next_offset_from_resp is not None and total_rows is not None:
-            #     self._query_finished = (next_offset_from_resp >= total_rows)
-
+            # Determine if query is finished based on multiple indicators
+            self._query_finished = False
+            
+            # Check if query state indicates finished
+            if query_state == 'FINISHED':
+                self._query_finished = True
+                logger.debug("Query marked as finished based on state")
+            
+            # Check if we have all the data (totalRows matches returnedRows)
+            elif total_rows is not None and returned_rows >= total_rows:
+                self._query_finished = True
+                logger.debug(f"Query marked as finished: returned {returned_rows} rows, total {total_rows} rows")
+            
+            # Check if nextOffset indicates no more data
+            elif next_offset is None or next_offset < 0:
+                self._query_finished = True
+                logger.debug("Query marked as finished: no nextOffset or negative nextOffset")
+            
+            # Check if returned rows is less than the limit (indicating last page)
+            elif returned_rows < self.arraysize:
+                self._query_finished = True
+                logger.debug(f"Query marked as finished: returned {returned_rows} rows, less than limit {self.arraysize}")
 
             # Rowcount: For non-SELECT, maybe API gives affected count? Default to -1.
             # For SELECT, set to -1 until fetchall or query finishes.
@@ -213,7 +226,7 @@ class Cursor:
             if self._query_finished:
                 # If finished immediately, rowcount is known
                 self._rowcount = len(self._rows_buffer) # Or use totalRows if reliable
-
+                logger.debug(f"Query finished immediately, rowcount set to {self._rowcount}")
 
         except (ApiError, QueryError, AuthenticationError) as e:
             # Re-raise errors using the connection's error hierarchy
@@ -496,8 +509,8 @@ def connect(
     login_url: str,
     client_id: str,
     client_secret: str,
-    username: str,
-    password: str,
+    username: Optional[str] = None,
+    password: Optional[str] = None,
     api_version: str = DEFAULT_API_VERSION,
     token_timeout: int = DEFAULT_TOKEN_TIMEOUT_SECONDS,
     **kwargs # Allow passing other args if needed later
@@ -508,16 +521,25 @@ def connect(
     Returns a PEP 249 Connection object.
     """
     logger.info(f"Initiating connection to Salesforce CDP: domain={login_url}, user={username}")
+
     try:
         # 1. Create Auth Handler
-        auth_handler = PasswordGrantAuth(
-            username=username,
-            password=password,
-            client_id=client_id,
-            client_secret=client_secret,
-            domain=login_url,
-            token_timeout=token_timeout
-        )
+        if username and password:
+            auth_handler = PasswordGrantAuth(
+                username=username,
+                password=password,
+                client_id=client_id,
+                client_secret=client_secret,
+                domain=login_url,
+                token_timeout=token_timeout
+            )
+        else:
+            auth_handler = ClientCredentialsAuth(
+                client_id=client_id,
+                client_secret=client_secret,
+                domain=login_url,
+                token_timeout=token_timeout
+            )
         # Perform initial authentication immediately to catch errors early
         auth_handler.authenticate()
 

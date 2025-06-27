@@ -10,7 +10,8 @@ from .exceptions import (
     NotSupportedError, AuthenticationError, ApiError, QueryError
 )
 
-__version__ = "0.1.0" # Example version
+# Version will be automatically set by Hatch during build
+__version__ = "unknown"
 
 __all__ = [
     # connect function

@@ -16,6 +16,7 @@ class SalesforceCDPClient:
         # Use a session provided by auth or create a new one
         self.session = getattr(auth_handler, '_session', requests.Session())
         self._base_api_path = None
+        logger.debug(f"SalesforceCDPClient initialized with API version: {self.api_version}")
 
     def _get_base_api_path(self) -> str:
         """Constructs the base path for data service API calls."""

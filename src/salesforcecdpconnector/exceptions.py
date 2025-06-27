@@ -1,8 +1,5 @@
 import requests.exceptions
 
-# PEP 249 Standard Exceptions
-# https://peps.python.org/pep-0249/#exceptions
-
 class Error(Exception):
     """Exception that is the base class of all other error exceptions.
     You can use this to catch all errors with one single except statement.
