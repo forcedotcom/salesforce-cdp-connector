@@ -155,11 +155,12 @@ class Cursor:
         self._clear_state()
 
         try:
-            logger.info(f"Executing SQL: {operation[:150]}{'...' if len(operation) > 150 else ''}")
+            logger.debug(f"Executing SQL: {operation[:150]}{'...' if len(operation) > 150 else ''}")
             if parameters:
                 logger.debug(f"With parameters: {parameters}")
 
             response = self._client.submit_query(operation, parameters)
+            logger.debug(f"Response: {response}")
             # Example response structure (adjust based on actual API):
             # {
             #   "metadata": [{"name": "col1", "type": "TEXT"}, {"name": "col2", "type": "NUMBER"}],
@@ -175,7 +176,7 @@ class Cursor:
             if not self._query_id:
                  raise self._connection.InternalError("API did not return a queryId.")
 
-            query_state = status_info.get('state', 'Unknown').upper()
+            query_state = status_info.get('completionStatus', 'Unspecified').upper()
             logger.debug(f"Query ID: {self._query_id}, Initial State: {query_state}")
 
             if query_state == 'FAILED':
@@ -226,7 +227,7 @@ class Cursor:
             if self._query_finished:
                 # If finished immediately, rowcount is known
                 self._rowcount = len(self._rows_buffer) # Or use totalRows if reliable
-                logger.debug(f"Query finished immediately, rowcount set to {self._rowcount}")
+                logger.debug(f"Query finished, rowcount set to {self._rowcount}")
 
         except (ApiError, QueryError, AuthenticationError) as e:
             # Re-raise errors using the connection's error hierarchy
@@ -319,10 +320,6 @@ class Cursor:
             if not new_data or returned_rows == 0:
                 logger.debug("Received empty data chunk, assuming query finished.")
                 self._query_finished = True
-                # If we know the total row count, set it now
-                # total_rows = response.get('totalRows')
-                # if total_rows is not None: self._rowcount = total_rows
-                # else: self._rowcount = self._row_index + len(self._rows_buffer) # Best guess
                 self._rowcount = self._row_index + len(self._rows_buffer) # Update based on *all* fetched rows so far
                 return False
 
@@ -330,25 +327,41 @@ class Cursor:
             self._next_offset += returned_rows # Update offset for the *next* call
 
             # Check if this chunk was the last one
-            # Option 1: Explicit "finished" status (requires separate call or status in response)
-            # status_resp = self._client.get_query_status(self._query_id)
-            # query_state = status_resp.get('status', {}).get('state', 'Unknown').upper()
-            # self._query_finished = (query_state == 'FINISHED')
-
-            # Option 2: Infer from response (e.g., returned_rows < limit, or nextOffset missing/points past total)
-            # Salesforce might indicate finished by nextOffset not being present or being -1
-            if response.get('nextOffset') is None or response.get('nextOffset', 0) < 0 or returned_rows < self.arraysize:
-                 logger.debug("Inferred query finished based on results response.")
-                 self._query_finished = True
-                 self._rowcount = self._row_index + len(self._rows_buffer) # Final count
+            total_rows = response.get('totalRows')
+            next_offset = response.get('nextOffset')
+            
+            # Multiple indicators that the query is finished
+            if next_offset is None or next_offset < 0:
+                logger.debug("Inferred query finished: no nextOffset or negative nextOffset")
+                self._query_finished = True
+                self._rowcount = self._row_index + len(self._rows_buffer)
+            elif total_rows is not None and self._next_offset >= total_rows:
+                logger.debug(f"Inferred query finished: next offset {self._next_offset} >= total rows {total_rows}")
+                self._query_finished = True
+                self._rowcount = self._row_index + len(self._rows_buffer)
+            elif returned_rows < self.arraysize:
+                logger.debug(f"Inferred query finished: returned {returned_rows} rows, less than limit {self.arraysize}")
+                self._query_finished = True
+                self._rowcount = self._row_index + len(self._rows_buffer)
 
             return True # Data was fetched
 
         except (ApiError, QueryError, AuthenticationError) as e:
+            # Check if this is an offset out of range error
+            error_msg = str(e).lower()
+            if "out of range" in error_msg or "offset" in error_msg and "available" in error_msg:
+                logger.debug(f"Offset out of range error detected: {e}. Marking query as finished.")
+                self._query_finished = True
+                self._rowcount = self._row_index + len(self._rows_buffer)
+                return False
+            
             # Re-raise using connection's hierarchy
-            if isinstance(e, AuthenticationError): raise self._connection.AuthenticationError(str(e)) from e
-            elif isinstance(e, QueryError): raise self._connection.QueryError(str(e)) from e
-            else: raise self._connection.OperationalError(str(e)) from e
+            if isinstance(e, AuthenticationError): 
+                raise self._connection.AuthenticationError(str(e)) from e
+            elif isinstance(e, QueryError): 
+                raise self._connection.QueryError(str(e)) from e
+            else: 
+                raise self._connection.OperationalError(str(e)) from e
         except Exception as e:
             logger.exception("Unexpected error during _fetch_more_data.")
             raise self._connection.InterfaceError(f"Unexpected error fetching data: {e}") from e
@@ -520,7 +533,7 @@ def connect(
 
     Returns a PEP 249 Connection object.
     """
-    logger.info(f"Initiating connection to Salesforce CDP: domain={login_url}, user={username}")
+    logger.debug(f"Initiating connection to Salesforce CDP: domain={login_url}, user={username}")
 
     try:
         # 1. Create Auth Handler
@@ -548,7 +561,7 @@ def connect(
 
         # 3. Create and return PEP 249 Connection
         connection = Connection(client=client)
-        logger.info("Salesforce CDP connection established successfully.")
+        logger.debug("Salesforce CDP connection established successfully.")
         return connection
 
     except AuthenticationError as e:

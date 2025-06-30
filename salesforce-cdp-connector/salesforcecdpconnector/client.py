@@ -93,7 +93,7 @@ class SalesforceCDPClient:
 
     def submit_query(self, sql: str, params: Optional[Union[Sequence, Dict[str, Any]]] = None) -> Dict[str, Any]:
         """Submits a SQL query to the CDP API."""
-        logger.info(f"Submitting query: {sql[:100]}{'...' if len(sql) > 100 else ''}")
+        logger.debug(f"Submitting query: {sql[:100]}{'...' if len(sql) > 100 else ''}")
         payload = {"sql": sql}
         # The API seems to expect 'sqlParameters' - adjust if your API uses a different key
         if params:

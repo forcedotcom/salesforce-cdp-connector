@@ -40,7 +40,7 @@ The Salesforce CDP Connector follows a **layered architecture** pattern with cle
                               ▼
 ┌─────────────────────────────────────────────────────────────┐
 │                   Salesforce CDP API                        │
-│  (External REST API)                                        │
+│  (REST API)                                        │
 └─────────────────────────────────────────────────────────────┘
 ```
 

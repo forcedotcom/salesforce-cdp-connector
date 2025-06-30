@@ -37,7 +37,42 @@ try:
     with conn.cursor() as cur:
         # Example query - Use named parameters if paramstyle='named'
         # Adjust SQL and parameters based on your CDP objects/fields
-        sql = "SELECT * FROM product_metrics__dll LIMIT 10"
+        
+        # Complex query that will generate a large dataset
+        sql = """
+        SELECT 
+            a.acct_id__c,
+            a.activation_rate__c,
+            a.engagement_rate__c,
+            a.penetration_rate__c,
+            a.utilization_rate__c,
+            b.acct_id__c as b_acct_id,
+            b.activation_rate__c as b_activation_rate,
+            b.engagement_rate__c as b_engagement_rate,
+            b.penetration_rate__c as b_penetration_rate,
+            b.utilization_rate__c as b_utilization_rate
+        FROM product_metrics__dll a
+        CROSS JOIN product_metrics__dll b
+        WHERE a.acct_id__c IS NOT NULL 
+        AND b.acct_id__c IS NOT NULL
+        ORDER BY a.acct_id__c, b.acct_id__c
+        """
+        
+        # Alternative: Self-join with different conditions
+        # sql = """
+        # SELECT 
+        #     a.acct_id__c,
+        #     a.activation_rate__c,
+        #     a.engagement_rate__c,
+        #     b.acct_id__c as b_acct_id,
+        #     b.activation_rate__c as b_activation_rate,
+        #     b.engagement_rate__c as b_engagement_rate
+        # FROM product_metrics__dll a
+        # INNER JOIN product_metrics__dll b ON a.acct_id__c != b.acct_id__c
+        # WHERE a.activation_rate__c > 0 AND b.activation_rate__c > 0
+        # ORDER BY a.acct_id__c, b.acct_id__c
+        # """
+        
         # params = {"last_name": "Smith"}
 
         # If using paramstyle='qmark':

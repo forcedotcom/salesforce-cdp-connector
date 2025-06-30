@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools", "setuptools_scm"]
+requires = ["setuptools>=61.0", "setuptools_scm"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -8,39 +8,40 @@ dynamic = ["version"]
 license = "BSD-3-Clause"
 license-files = ["LICENSE.txt"]
 requires-python = ">=3.8"
-description = "Salesforce Data Cloud Python Connector"
+description = "Salesforce Data Cloud Python Connector - Monorepo"
 readme = "README.md"
 authors = [{ name = "Data Cloud Query Developer Team", email = "datacloud-query-connector-owners@salesforce.com" }]
-keywords = ["cdp", "salesforce", "dbapi"]
-dependencies = [
-    "pandas>=2.0.3",
-    "pyarrow>=17.0.0",
-    "pyjwt>=2.9.0",
-    "python-dateutil>=2.9.0.post0",
-    "requests>=2.32.3",
-    "urllib3>=2.2.3",
-    "loguru>=0.7.3",
-]
+keywords = ["cdp", "salesforce", "dbapi", "grpc"]
 
 [project.urls]
 homepage = "https://github.com/forcedotcom/salesforce-cdp-connector"
 source = "https://github.com/forcedotcom/salesforce-cdp-connector"
 
-[tool.setuptools_scm]
-version_scheme = "guess-next-dev"
-local_scheme = "node-and-date"
-
-[dependency-groups]
+[project.optional-dependencies]
 dev = [
     "cryptography>=44.0.0",
     "pytest>=8.3.4",
     "pytest-cov>=5.0.0",
     "responses>=0.25.6",
-    "ruff>=0.9.6"
+    "ruff>=0.9.6",
+    "build>=1.0.0",
+    "twine>=4.0.0",
 ]
 
+[tool.setuptools_scm]
+version_scheme = "guess-next-dev"
+local_scheme = "node-and-date"
+
+# Tool configurations
 [tool.ruff.lint]
-select = ["E9","F63","F7","F82", "E501"] # match existing checks from GitHub Action
+select = ["E9","F63","F7","F82", "E501"]
+line-length = 127
 
 [tool.ruff]
-line-length = 127 # match existing checks from GitHub Action
+line-length = 127
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py", "*_test.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"] 
