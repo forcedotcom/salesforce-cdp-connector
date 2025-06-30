@@ -1,7 +1,7 @@
 # Makefile for Salesforce CDP Connector packages
 # Supports both salesforcecdpconnector and salesforcecdpconnector-grpc packages
 
-.PHONY: help clean build build-main build-grpc install install-main install-grpc install-dev install-dev-main install-dev-grpc test test-main test-grpc lint lint-main lint-grpc all
+.PHONY: help clean build build-main build-grpc install install-main install-grpc install-dev install-dev-main install-dev-grpc uninstall uninstall-main uninstall-grpc test test-main test-grpc lint lint-main lint-grpc all
 
 # Default target
 help:
@@ -15,6 +15,9 @@ help:
 	@echo "  install-dev  - Install both packages with dev dependencies"
 	@echo "  install-dev-main - Install main package with dev dependencies"
 	@echo "  install-dev-grpc - Install gRPC package with dev dependencies"
+	@echo "  uninstall    - Uninstall both packages"
+	@echo "  uninstall-main - Uninstall main package"
+	@echo "  uninstall-grpc - Uninstall gRPC package"
 	@echo "  test         - Run tests for both packages"
 	@echo "  test-main    - Run tests for main package"
 	@echo "  test-grpc    - Run tests for gRPC package"
@@ -78,6 +81,17 @@ install-dev-main:
 install-dev-grpc:
 	@echo "Installing salesforcecdpconnector-grpc with dev dependencies..."
 	cd salesforce-cdp-connector-grpc && pip install -e ".[dev]"
+
+# Uninstall targets
+uninstall: uninstall-main uninstall-grpc
+
+uninstall-main:
+	@echo "Uninstalling salesforcecdpconnector..."
+	pip uninstall -y salesforce-cdp-connector || true
+
+uninstall-grpc:
+	@echo "Uninstalling salesforcecdpconnector-grpc..."
+	pip uninstall -y salesforce-cdp-connector-grpc || true
 
 # Development setup - install root dev dependencies
 dev-setup:

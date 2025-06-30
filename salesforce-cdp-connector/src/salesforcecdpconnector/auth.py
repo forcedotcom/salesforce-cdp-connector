@@ -7,32 +7,14 @@ import os
 from typing import Optional
 
 from .exceptions import AuthenticationError
+from .base import BaseAuthHandler
 from .constants import DEFAULT_TOKEN_TIMEOUT_SECONDS
 from .utils import clean_login_url
 
-class AuthHandler(ABC):
-    @abstractmethod
-    def authenticate(self) -> None:
-        """Perform initial authentication and store credentials/tokens."""
-        pass
-
-    @abstractmethod
-    def get_headers(self) -> dict:
-        """Return headers required for authenticated API calls."""
-        pass
-
-    @abstractmethod
-    def get_instance_url(self) -> str:
-        """Return the base URL for API calls."""
-        pass
-
-    @abstractmethod
-    def ensure_valid_token(self) -> None:
-        """Check token validity and refresh if necessary."""
-        pass
 
 
-class PasswordGrantAuth(AuthHandler):
+
+class PasswordGrantAuth(BaseAuthHandler):
     def __init__(self, *, username: str, password: str, client_id: str, client_secret: str, domain: str, token_timeout: int = DEFAULT_TOKEN_TIMEOUT_SECONDS):
         self.username = username
         self.password = password
@@ -115,7 +97,7 @@ class PasswordGrantAuth(AuthHandler):
                  raise AuthenticationError("Cannot get instance URL, authentication failed or not performed.")
         return self._instance_url
 
-class ClientCredentialsAuth(AuthHandler):
+class ClientCredentialsAuth(BaseAuthHandler):
     def __init__(self, *, domain: Optional[str] = None, client_id: Optional[str] = None, 
                  client_secret: Optional[str] = None, token: Optional[str] = None,
                  token_timeout: int = DEFAULT_TOKEN_TIMEOUT_SECONDS):

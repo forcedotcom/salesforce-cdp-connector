@@ -3,20 +3,22 @@ import json
 from loguru import logger
 from typing import Optional, Dict, Any, List, Tuple, Union, Sequence
 
-from .auth import AuthHandler
-from .exceptions import ApiError, QueryError, AuthenticationError
-from .constants import DEFAULT_API_VERSION
+from ..exceptions import ApiError, QueryError, AuthenticationError
+from ..constants import DEFAULT_API_VERSION
+from ..base import BaseClient, BaseAuthHandler
 
-class SalesforceCDPClient:
-    """Handles low-level communication with the Salesforce Datacloud."""
 
-    def __init__(self, auth_handler: AuthHandler, api_version: str = DEFAULT_API_VERSION):
+class Client(BaseClient):
+    """Handles low-level communication with the Salesforce Datacloud via REST API."""
+
+    def __init__(self, auth_handler: BaseAuthHandler, api_version: str = DEFAULT_API_VERSION):
+        super().__init__()
         self.auth = auth_handler
         self.api_version = api_version
         # Use a session provided by auth or create a new one
         self.session = getattr(auth_handler, '_session', requests.Session())
         self._base_api_path = None
-        logger.debug(f"SalesforceCDPClient initialized with API version: {self.api_version}")
+        logger.debug(f"Client initialized with API version: {self.api_version}")
 
     def _get_base_api_path(self) -> str:
         """Constructs the base path for data service API calls."""
@@ -43,7 +45,6 @@ class SalesforceCDPClient:
                  headers['Content-Type'] = 'application/json'
         elif 'json' in kwargs and 'Content-Type' not in headers:
              headers['Content-Type'] = 'application/json'
-
 
         logger.debug(f"Request: {method} {full_url}")
         logger.trace(f" Headers: {headers}")
@@ -111,4 +112,4 @@ class SalesforceCDPClient:
         """Fetches a page of results for a query."""
         logger.debug(f"Fetching results for query ID: {query_id}, offset: {offset}, limit: {limit}")
         params = {"offset": offset, "rowLimit": limit}
-        return self._request("GET", f"/query-sql/{query_id}/rows", params=params)
+        return self._request("GET", f"/query-sql/{query_id}/rows", params=params) 

@@ -20,6 +20,14 @@ dependencies = [
     "loguru>=0.7.3",
 ]
 
+[project.optional-dependencies]
+grpc = [
+    "salesforcecdpconnector-grpc",
+]
+
+[project.entry-points."salesforcecdpconnector.connections"]
+connect_api = "salesforcecdpconnector.connect_api"
+
 [project.urls]
 homepage = "https://github.com/forcedotcom/salesforce-cdp-connector"
 source = "https://github.com/forcedotcom/salesforce-cdp-connector"
@@ -30,7 +38,7 @@ local_scheme = "node-and-date"
 root = ".."
 
 [tool.setuptools.packages.find]
-where = ["."]
+where = ["src"]
 include = ["salesforcecdpconnector"]
 
 [dependency-groups]
