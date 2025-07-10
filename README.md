@@ -69,6 +69,26 @@ The query results can also be directly extracted as a pandas dataframe
 dataframe = conn.get_pandas_dataframe('<query>')
 ```
 
+**Using a non-default dataspace**
+```python
+conn = SalesforceCDPConnection(
+        'login_url', 
+        'user_name', 
+        'password', 
+        'client_id', 
+        'client_secret',
+        dataspace="my-dataspace",
+    )
+```
+
+Once the connection object is created the queries can be executed using cursor as follows, all queries will be to this specific dataspace `my-dataspace`
+
+```
+cur = conn.cursor()
+cur.execute('<query>')
+results = cur.fetchall()
+```
+
 ### Creating a connected App
 
 1. Log in to salesforce as an admin. In the top right corner, click on the gear icon and go to step

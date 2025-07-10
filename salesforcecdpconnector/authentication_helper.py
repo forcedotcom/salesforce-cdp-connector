@@ -4,11 +4,13 @@
 #  SPDX-License-Identifier: BSD-3-Clause
 #  For full license text, see the LICENSE file in the repo root or https://opensource.org/licenses/BSD-3-Clause
 #
+
 from .constants import AUTH_PARAM_GRANT_TYPE
 from .constants import AUTH_PARAM_CDP_GRANT_TYPE
 from .constants import AUTH_PARAM_CDP_SUBJECT_TOKEN_TYPE
 from .constants import AUTH_PARAM_CDP_SUBJECT_TOKEN_TYPE_VALUE
 from .constants import AUTH_PARAM_CDP_SUBJECT_TOKEN
+from .constants import AUTH_PARAM_DATASPACE
 from .constants import AUTH_RESPONSE_ACCESS_TOKEN
 from .constants import AUTH_RESPONSE_EXPIRES_IN
 from .constants import AUTH_RESPONSE_INSTANCE_URL
@@ -116,6 +118,10 @@ class AuthenticationHelper:
         params = {AUTH_PARAM_GRANT_TYPE: AUTH_PARAM_CDP_GRANT_TYPE,
                   AUTH_PARAM_CDP_SUBJECT_TOKEN_TYPE: AUTH_PARAM_CDP_SUBJECT_TOKEN_TYPE_VALUE,
                   AUTH_PARAM_CDP_SUBJECT_TOKEN: core_token}
+        
+        if self.connection.dataspace is not None:
+            params[AUTH_PARAM_DATASPACE] = self.connection.dataspace
+            
         current_time = datetime.now()
         access_code_res = self.session.post(url=login_url + '/services/a360/token', params=params)
         if access_code_res.status_code == 200:
