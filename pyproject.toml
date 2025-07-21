@@ -32,7 +32,6 @@ dev = [
 version_scheme = "guess-next-dev"
 local_scheme = "node-and-date"
 
-# Tool configurations
 [tool.ruff.lint]
 select = ["E9","F63","F7","F82", "E501"]
 line-length = 127
