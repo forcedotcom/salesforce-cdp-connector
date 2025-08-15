@@ -132,7 +132,17 @@ class AuthenticationHelper:
             token_expiry_time = current_time + timedelta(seconds=expires_in_seconds)
             self._revoke_core_token(login_url, core_token)
         else:
-            raise Error('CDP token retrieval failed with code %d' % access_code_res.status_code)
+            error_message = f'CDP token retrieval failed with code {access_code_res.status_code}'
+            try:
+                error_details = access_code_res.json()
+                if 'error' in error_details:
+                    error_message += f' - {error_details["error"]}'
+                if 'error_description' in error_details:
+                    error_message += f': {error_details["error_description"]}'
+            except (ValueError, KeyError):
+                # If response parsing fails, just use the status code
+                pass            
+            raise Error(error_message)
         self.exchange_token = access_token
         self.token_expiry_time = token_expiry_time
         self.instance_url = instance_url
