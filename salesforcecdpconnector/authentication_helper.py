@@ -69,6 +69,29 @@ class AuthenticationHelper:
                 delay = random.randint(RETRY_DELAY_MIN_SECONDS, RETRY_DELAY_MAX_SECONDS)
                 time.sleep(delay)
 
+    def _generate_error_message(self, base_message, response):
+        """
+        Generate a detailed error message from HTTP response.
+        
+        Args:
+            base_message (str): Base error message
+            response: HTTP response object
+            
+        Returns:
+            str: Formatted error message with details from response
+        """
+        error_message = f'{base_message} with code {response.status_code}'
+        try:
+            error_details = response.json()
+            if 'error' in error_details:
+                error_message += f' - {error_details["error"]}'
+            if 'error_description' in error_details:
+                error_message += f': {error_details["error_description"]}'
+        except (ValueError, KeyError):
+            # If response parsing fails, just use the status code
+            pass
+        return error_message
+        
     def _get_token(self):
         """
         Retrieves the cdp token and instance url. This method does is synchronized.
@@ -132,7 +155,8 @@ class AuthenticationHelper:
             token_expiry_time = current_time + timedelta(seconds=expires_in_seconds)
             self._revoke_core_token(login_url, core_token)
         else:
-            raise Error('CDP token retrieval failed with code %d' % access_code_res.status_code)
+            error_message = self._generate_error_message('CDP token retrieval failed', access_code_res)
+            raise Error(error_message)
         self.exchange_token = access_token
         self.token_expiry_time = token_expiry_time
         self.instance_url = instance_url
@@ -169,7 +193,8 @@ class AuthenticationHelper:
             org_url = access_code[AUTH_RESPONSE_INSTANCE_URL]
             return self._exchange_token(org_url, core_token)
         else:
-            raise Error('Token Renewal failed with code %d' % access_code_res.status_code)
+            error_message = self._generate_error_message('Token rerenewal failed', access_code_res)
+            raise Error(error_message)
 
     def _token_by_un_pwd_flow(self, login_url, client_id, client_secret, username, password):
         """
@@ -191,7 +216,8 @@ class AuthenticationHelper:
             org_url = access_code[AUTH_RESPONSE_INSTANCE_URL]
             return self._exchange_token(org_url, core_token)
         else:
-            raise Error('Core token retrieval failed with code %d' % access_code_res.status_code)
+            error_message = self._generate_error_message('CDP core token retrieval failed', access_code_res)
+            raise Error(error_message)
         
     def _token_by_jwt_bearer_flow(self, login_url, username, client_id, private_key):
         """
@@ -221,4 +247,5 @@ class AuthenticationHelper:
             org_url = access_code[AUTH_RESPONSE_INSTANCE_URL]
             return self._exchange_token(org_url, core_token)
         else:
-            raise Error('Core token retrieval failed with code %d' % access_code_res.status_code)
+            error_message = self._generate_error_message('CDP core token retrieval failed', access_code_res)
+            raise Error(error_message)
