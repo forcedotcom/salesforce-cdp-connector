@@ -1,6 +1,6 @@
 [project]
 name = "salesforce-cdp-connector"
-version = "1.0.17"
+version = "2.0.0a1" # Breaking changes incoming, see https://peps.python.org/pep-0440/#pre-releases
 license = "BSD-3-Clause"
 license-files = ["LICENSE.txt"]
 requires-python = ">=3.8"
