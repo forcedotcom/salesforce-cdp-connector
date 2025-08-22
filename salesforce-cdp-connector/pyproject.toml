@@ -2,9 +2,8 @@
 requires = ["setuptools>=61.0", "setuptools_scm"]
 build-backend = "setuptools.build_meta"
 
-
 [project]
-name = "salesforcecdpconnector"
+name = "salesforce-cdp-connector-connect"
 dynamic = ["version"]
 license = "BSD-3-Clause"
 requires-python = ">=3.8"
