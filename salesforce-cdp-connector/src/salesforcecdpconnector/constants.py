@@ -24,6 +24,7 @@ AUTH_PARAM_CDP_SUBJECT_TOKEN = 'subject_token'
 AUTH_PARAM_CDP_SUBJECT_TOKEN_TYPE = 'subject_token_type'
 AUTH_PARAM_CDP_SUBJECT_TOKEN_TYPE_VALUE = 'urn:ietf:params:oauth:token-type:access_token'
 AUTH_PARAM_REFRESH_TOKEN_GRANT_TYPE = 'refresh_token'
+AUTH_PARAM_DATASPACE = 'dataspace'
 
 ENCODING_ASCII = 'ascii'
 
