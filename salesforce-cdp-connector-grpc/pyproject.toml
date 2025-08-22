@@ -3,7 +3,7 @@ requires = ["setuptools>=61.0", "setuptools_scm"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "salesforcecdpconnector-grpc"
+name = "salesforce-cdp-connector-grpc"
 dynamic = ["version"]
 license = "BSD-3-Clause"
 requires-python = ">=3.8"
