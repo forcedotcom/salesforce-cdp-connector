@@ -82,13 +82,11 @@ class QuerySubmitter:
         sql_response = QuerySubmitter.session.post(url=url, data=json_payload, headers=headers, verify=False)
         QuerySubmitter.logger.debug("Query Submitted in %s", str(timedelta(seconds=timer() - start_time)))
         if sql_response.status_code != 200:
-            try:
-                error_json = sql_response.json()
-                error_message = error_json['message']
-            finally:
-                if error_message is not None:
-                    raise Error('Failed executing query in server : %s' % error_message)
-                raise Error('Failed executing query in server')
+            error_message = QuerySubmitter._extract_error_message(sql_response)
+            details = f"status={sql_response.status_code}"
+            if error_message is not None:
+                details += f", message={error_message}"
+            raise Error(f"Failed executing query in server : {details}")
         response_json = sql_response.json()
         return response_json
 
@@ -101,13 +99,11 @@ class QuerySubmitter:
         QuerySubmitter.logger.debug("Fetched next batch in %s", str(timedelta(seconds=timer() - start_time)))
         response_json = sql_response.json()
         if sql_response.status_code != 200:
-            try:
-                error_json = sql_response.json()
-                error_message = error_json['message']
-            finally:
-                if error_message is not None:
-                    raise Error('Failed executing query in server : %s' % error_message)
-                raise Error('Failed executing query in server')
+            error_message = QuerySubmitter._extract_error_message(sql_response)
+            details = f"status={sql_response.status_code}"
+            if error_message is not None:
+                details += f", message={error_message}"
+            raise Error(f"Failed executing query in server : {details}")
         return response_json
 
     @staticmethod
@@ -128,15 +124,26 @@ class QuerySubmitter:
         sql_response = QuerySubmitter.session.get(url=url, headers=headers, verify=False, params=parameters)
         QuerySubmitter.logger.debug("Metadata Query Submitted in %s", str(timedelta(seconds=timer() - start_time)))
         if sql_response.status_code != 200:
-            try:
-                error_json = sql_response.json()
-                error_message = error_json['message']
-            finally:
-                if error_message is not None:
-                    raise Error('Failed executing metadata query in server : %s' % error_message)
-                raise Error('Failed executing query in server')
+            error_message = QuerySubmitter._extract_error_message(sql_response)
+            details = f"status={sql_response.status_code}"
+            if error_message is not None:
+                details += f", message={error_message}"
+            raise Error(f"Failed executing metadata query in server : {details}")
         response_json = sql_response.json()
         return response_json
+
+    @staticmethod
+    def _extract_error_message(response):
+        try:
+            error_json = response.json()
+            if isinstance(error_json, dict):
+                return error_json.get('message') or json.dumps(error_json)
+            return str(error_json)
+        except Exception:
+            text = response.text
+            if text:
+                return text[:500]
+        return None
 
     @staticmethod
     def _get_payload(query):
