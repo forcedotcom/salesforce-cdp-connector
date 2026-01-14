@@ -55,6 +55,21 @@ conn = SalesforceCDPConnection(login_url,
    )
 ```
 
+**Using Client Credentials**
+
+The Client Credentials flow is ideal for server-to-server integrations where no user context is required. This flow uses only the connected app's client ID and client secret to authenticate.
+
+```python
+from salesforcecdpconnector.connection import SalesforceCDPConnection
+conn = SalesforceCDPConnection(
+       login_url='<login_url>',
+       client_id='<client_id>', 
+       client_secret='<client_secret>'
+   )
+```
+
+> **Note**: To use Client Credentials flow, your connected app must be configured to allow it. See the official Salesforce documentation: [Configure Client Credentials Flow for External Client Apps](https://help.salesforce.com/s/articleView?id=xcloud.configure_client_credentials_flow_for_external_client_apps.htm&type=5)
+
 Once the connection object is created the queries can be executed using cursor as follows
 
 ```
