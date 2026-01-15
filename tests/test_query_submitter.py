@@ -12,6 +12,7 @@ import responses
 import unittest
 
 from salesforcecdpconnector.query_submitter import QuerySubmitter
+from salesforcecdpconnector.exceptions import Error
 
 
 class TestQuerySubmitter(unittest.TestCase):
@@ -112,6 +113,22 @@ class TestQuerySubmitter(unittest.TestCase):
                                                          'www.salesforce.com', 'token')
 
         self.assertEqual(len(results['data']), 3)  # add assertion here
+
+    @responses.activate
+    def test_get_query_results_non_json_error(self):
+        responses.add(**{
+            'method': responses.POST,
+            'url': re.compile('https://www.salesforce.com.*'),
+            'body': '500 Internal Server Error: no healthy upstream',
+            'status': 500,
+            'content_type': 'text/html'
+        })
+
+        with self.assertRaises(Error) as ctx:
+            QuerySubmitter._get_query_results('select 1', 'www.salesforce.com', 'token')
+        self.assertIn('status=500', str(ctx.exception))
+        self.assertIn('no healthy upstream', str(ctx.exception))
+
 
 
 if __name__ == '__main__':
