@@ -1,6 +1,6 @@
 [project]
 name = "salesforce-cdp-connector"
-version = "1.0.17"
+version = "1.0.18"
 license = "BSD-3-Clause"
 license-files = ["LICENSE.txt"]
 requires-python = ">=3.8"
