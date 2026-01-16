@@ -92,6 +92,33 @@ class TestAuthenticationHelper(unittest.TestCase):
         self.assertEqual(token, 'access_token')
         self.assertEqual(instanceUrl, 'instanceurl.salesforce.com')
 
+    @responses.activate
+    def test_token_by_client_credentials_flow(self):
+        responses.add(**{
+            'method': responses.POST,
+            'url': re.compile('https://login.salesforce.com/*'),
+            'body': json.dumps(self.core_response),
+            'status': 200
+        })
+        responses.add(**{
+            'method': responses.POST,
+            'url': re.compile('https://someorgurl.salesforce.com/*'),
+            'body': json.dumps(self.exchange_response),
+            'status': 200
+        })
+
+        connection = SalesforceCDPConnection(
+            login_url='https://login.salesforce.com',
+            client_id='clientId',
+            client_secret='clientSecret'
+        )
+
+        authenticationHelper = AuthenticationHelper(connection)
+        token, instanceUrl = authenticationHelper.get_token()
+
+        self.assertEqual(token, 'access_token')
+        self.assertEqual(instanceUrl, 'instanceurl.salesforce.com')
+
     def test_retry(self):
         connection = SalesforceCDPConnection('https://login.salesforce.com', 'username', 'password', 'clientId',
                                              'clientSecret')
