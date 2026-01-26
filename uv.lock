@@ -1029,7 +1029,7 @@ wheels = [
 
 [[package]]
 name = "salesforce-cdp-connector"
-version = "1.0.18"
+version = "1.0.19"
 source = { editable = "." }
 dependencies = [
     { name = "pandas", version = "2.0.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.9'" },
