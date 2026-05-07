@@ -5,8 +5,22 @@ name: Python package
 on:
   push:
     branches: [ master ]
+    paths:
+      - 'salesforcecdpconnector/**'
+      - 'tests/**'
+      - 'pyproject.toml'
+      - 'uv.lock'
+      - 'example.py'
+      - '.github/workflows/v1-package.yml'
   pull_request:
     branches: [ master ]
+    paths:
+      - 'salesforcecdpconnector/**'
+      - 'tests/**'
+      - 'pyproject.toml'
+      - 'uv.lock'
+      - 'example.py'
+      - '.github/workflows/v1-package.yml'
 
 jobs:
   build:

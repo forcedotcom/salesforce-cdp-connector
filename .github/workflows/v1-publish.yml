@@ -12,7 +12,7 @@ permissions:
 
 jobs:
   deploy:
-
+    if: startsWith(github.event.release.tag_name, 'salesforce-cdp-connector-')
     runs-on: ubuntu-latest
 
     steps:
