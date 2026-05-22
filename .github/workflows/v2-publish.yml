@@ -4,36 +4,74 @@ on:
   release:
     types: [published]
 
+permissions:
+  contents: read
+
 jobs:
-  publish:
+  validate:
     if: startsWith(github.event.release.tag_name, 'salesforce-datacloud-connector-')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check tag matches pyproject version
+        working-directory: salesforce_datacloud_connector
+        run: |
+          TAG="${GITHUB_REF#refs/tags/salesforce-datacloud-connector-}"
+          PKG_VERSION=$(python3 -c "import tomllib; print(tomllib.load(open('pyproject.toml','rb'))['project']['version'])")
+          if [ "$TAG" != "$PKG_VERSION" ]; then
+            echo "::error::Tag salesforce-datacloud-connector-${TAG} does not match pyproject version ${PKG_VERSION}"
+            exit 1
+          fi
+
+  test:
+    if: startsWith(github.event.release.tag_name, 'salesforce-datacloud-connector-')
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.8", "3.9", "3.10", "3.11"]
+    defaults:
+      run:
+        working-directory: salesforce_datacloud_connector
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: salesforce_datacloud_connector/uv.lock
+      - run: uv python install ${{ matrix.python-version }}
+      - run: uv sync --all-extras --dev --frozen
+      - run: uv run --frozen pytest -m "not e2e"
+
+  build:
+    needs: [validate, test]
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: salesforce_datacloud_connector
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: salesforce_datacloud_connector/uv.lock
+      - run: uv python install 3.10
+      - run: uv sync --all-extras --dev --frozen
+      - run: uv build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: salesforce_datacloud_connector/dist/
+
+  publish:
+    needs: build
     runs-on: ubuntu-latest
     environment: pypi-v2
     permissions:
       id-token: write
-    defaults:
-      run:
-        working-directory: salesforce_datacloud_connector
-
     steps:
-      - uses: actions/checkout@v4
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@v5
+      - uses: actions/download-artifact@v4
         with:
-          enable-cache: true
-          cache-dependency-glob: salesforce_datacloud_connector/uv.lock
-
-      - name: Set up Python
-        run: uv python install 3.10
-
-      - name: Install dependencies
-        run: uv sync --all-extras --dev --frozen
-
-      - name: Build distributions
-        run: uv build
-
-      - name: Publish to PyPI
-        uses: pypa/gh-action-pypi-publish@release/v1
-        with:
-          packages-dir: salesforce_datacloud_connector/dist
+          name: dist
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@release/v1
