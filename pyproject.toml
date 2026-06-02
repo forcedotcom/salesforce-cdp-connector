@@ -1,6 +1,6 @@
 [project]
 name = "salesforce-cdp-connector"
-version = "1.0.19"
+version = "1.0.20"
 license = "BSD-3-Clause"
 license-files = ["LICENSE.txt"]
 requires-python = ">=3.8"
@@ -48,3 +48,6 @@ select = ["E9","F63","F7","F82", "E501"] # match existing checks from GitHub Act
 
 [tool.ruff]
 line-length = 127 # match existing checks from GitHub Action
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

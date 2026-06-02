@@ -1,5 +1,18 @@
 # salesforce-cdp-connector
 
+This repository publishes two Python packages for Salesforce Data Cloud:
+
+| Package | Status | Install |
+|---|---|---|
+| [`salesforce-datacloud-connector`](salesforce_datacloud_connector/README.md) | **Beta — recommended for new projects** | `pip install --pre salesforce-datacloud-connector` |
+| `salesforce-cdp-connector` (this package) | Deprecated | `pip install salesforce-cdp-connector` |
+
+## Migration
+
+⚠️ This package is deprecated and will be removed once `salesforce-datacloud-connector` reaches GA. New users and existing users should migrate to `salesforce-datacloud-connector`. See the [v2 README](salesforce_datacloud_connector/README.md) for installation and usage.
+
+## salesforce-cdp-connector (deprecated)
+
 A readonly CDP client for Python. This can be used to execute queries against CDP and load the data into python.
 
 ## Usage
