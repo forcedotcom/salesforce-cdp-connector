@@ -7,7 +7,7 @@ The Cursor class executes queries and manages result retrieval.
 from typing import Any, Dict, List, Optional, Tuple
 
 from .api.client import DataCloudQueryClient
-from .api.models import ColumnMetadata
+from .api.models import ColumnMetadata, QueryStatus
 from .exceptions import InterfaceError, NotSupportedError
 from .types import build_description_tuple, convert_datacloud_value
 
@@ -40,6 +40,10 @@ class Cursor:
         self._description: Optional[List[Tuple]] = None
         self._rowcount: int = -1  # DB-API 2.0: -1 for SELECT, else number of rows affected
         self._closed: bool = False
+        # Latest QueryStatus observed on this cursor — refreshed by execute()
+        # and by the polling loop. Returned by get_query_status() without an
+        # extra HTTP call.
+        self._query_status: Optional[QueryStatus] = None
 
     @property
     def description(self) -> Optional[List[Tuple]]:
@@ -173,6 +177,7 @@ class Cursor:
         self._query_id = response.status.query_id
         self._metadata = response.metadata
         self._total_row_count = response.status.row_count
+        self._query_status = response.status
         self._rowcount = -1  # SELECT queries return -1
         self._build_description()
 
@@ -186,6 +191,7 @@ class Cursor:
             # Asynchronous response - need to poll until complete
             final_status = self._client.poll_until_complete(self._query_id)
             self._total_row_count = final_status.row_count
+            self._query_status = final_status
 
             # Fetch first chunk
             self._fetch_next_chunk()
@@ -322,6 +328,39 @@ class Cursor:
         self._check_query_executed()
 
         self._client.cancel_query(self._query_id)
+
+    def get_query_status(self) -> Optional[QueryStatus]:
+        """
+        Return the most recently observed QueryStatus for this cursor's query.
+
+        This is a non-blocking accessor — it does not issue an extra HTTP
+        call. The status is refreshed each time `execute()` runs and after
+        the async polling loop completes. It is the surface used to access
+        server-side execution statistics like wall-clock runtime and
+        rows-processed.
+
+        Note on availability today: Connect API V3 does not yet include
+        `executionStatistics` in the `QuerySqlStatusRepresentation` it returns,
+        so `status.execution_statistics` will typically be `None`. This
+        accessor is forward-compatible — once Connect surfaces those fields,
+        they will populate automatically without any client-side change.
+        Until then, callers can still use `row_count`, `progress`,
+        `chunk_count`, and `completion_status`.
+
+        Returns:
+            The latest QueryStatus, or None if no query has been executed.
+
+        Example:
+            cursor.execute("SELECT ...")
+            for _ in cursor:
+                pass
+            status = cursor.get_query_status()
+            stats = status.execution_statistics
+            if stats and stats.wall_clock_time is not None:
+                print(f"server runtime: {stats.wall_clock_time}")
+        """
+        self._check_closed()
+        return self._query_status
 
     def fetch_df(self):
         """

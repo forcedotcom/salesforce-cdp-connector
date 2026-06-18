@@ -2,10 +2,16 @@
 Tests for Data Cloud Query API client.
 """
 
+from datetime import timedelta
+
 import pytest
 import responses
 
 from salesforce_datacloud_connector.api.client import DataCloudQueryClient
+from salesforce_datacloud_connector.api.models import (
+    ExecutionStatistics,
+    QueryStatus,
+)
 from salesforce_datacloud_connector.exceptions import ProgrammingError
 
 
@@ -367,3 +373,60 @@ def test_auth_token_included():
     )
 
     client.execute_query("SELECT 1")
+
+
+def test_query_status_without_execution_statistics():
+    """Connect API V3 today does not include `executionStatistics` — parsing
+    still succeeds and the field is left as None.
+    """
+    status = QueryStatus.from_dict(
+        {
+            "queryId": "q1",
+            "completionStatus": "Finished",
+            "progress": 1.0,
+            "rowCount": 1288,
+            "chunkCount": 1,
+            "expirationTime": "seconds: 1738344542\n",
+        }
+    )
+
+    assert status.is_complete()
+    assert status.row_count == 1288
+    assert status.execution_statistics is None
+
+
+def test_query_status_with_execution_statistics():
+    """When the server includes `executionStatistics`, it parses into an
+    ExecutionStatistics with timedelta wall-clock and integer rowsProcessed.
+    """
+    status = QueryStatus.from_dict(
+        {
+            "queryId": "q1",
+            "completionStatus": "Finished",
+            "progress": 1.0,
+            "rowCount": 1288,
+            "chunkCount": 1,
+            "executionStatistics": {
+                "wallClockTime": 42,
+                "rowsProcessed": 1288,
+                "compilationTime": 7,
+            },
+        }
+    )
+
+    stats = status.execution_statistics
+    assert isinstance(stats, ExecutionStatistics)
+    assert stats.wall_clock_time == timedelta(milliseconds=42)
+    assert stats.rows_processed == 1288
+    assert stats.compilation_time == timedelta(milliseconds=7)
+
+
+def test_execution_statistics_partial_fields():
+    """Missing fields stay None — the model never assumes a server contract
+    that the V3 spec hasn't pinned down yet.
+    """
+    stats = ExecutionStatistics.from_dict({"rowsProcessed": 5})
+
+    assert stats.wall_clock_time is None
+    assert stats.rows_processed == 5
+    assert stats.compilation_time is None

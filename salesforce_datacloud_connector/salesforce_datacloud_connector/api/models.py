@@ -5,7 +5,50 @@ These models represent the structure of API responses from the Query API endpoin
 """
 
 from dataclasses import dataclass
+from datetime import timedelta
 from typing import Any, List, Optional
+
+
+@dataclass
+class ExecutionStatistics:
+    """
+    Server-side execution statistics for a query.
+
+    These fields capture wall-clock runtime, rows processed, and compilation
+    time for the query as measured on the server. The Connect API V3
+    `QuerySqlStatusRepresentation` does not yet surface them, so on Connect
+    today they are typically `None`; the model parses them when present so
+    the client is ready as soon as the server starts including them.
+    """
+
+    wall_clock_time: Optional[timedelta] = None
+    rows_processed: Optional[int] = None
+    compilation_time: Optional[timedelta] = None
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "ExecutionStatistics":
+        return cls(
+            wall_clock_time=_parse_duration(data.get("wallClockTime")),
+            rows_processed=data.get("rowsProcessed"),
+            compilation_time=_parse_duration(data.get("compilationTime")),
+        )
+
+
+def _parse_duration(value: Any) -> Optional[timedelta]:
+    """Parse a Connect-API duration value (milliseconds, seconds, or ISO 8601)."""
+    if value is None:
+        return None
+    if isinstance(value, timedelta):
+        return value
+    if isinstance(value, (int, float)):
+        # Convention: integer/float server values are milliseconds.
+        return timedelta(milliseconds=value)
+    if isinstance(value, str):
+        try:
+            return timedelta(milliseconds=float(value))
+        except ValueError:
+            return None
+    return None
 
 
 @dataclass
@@ -20,6 +63,9 @@ class QueryStatus:
         row_count: Total number of rows in the result set
         chunk_count: Number of chunks the results are divided into
         expiration_time: When the query results expire (if applicable)
+        execution_statistics: Server-side execution stats (wall-clock time,
+            rows processed). `None` when the server does not include them in
+            the response, which is the case for Connect API V3 today.
     """
     query_id: str
     completion_status: str
@@ -27,6 +73,7 @@ class QueryStatus:
     row_count: int
     chunk_count: int
     expiration_time: Optional[str] = None
+    execution_statistics: Optional[ExecutionStatistics] = None
 
     @classmethod
     def from_dict(cls, data: dict) -> "QueryStatus":
@@ -39,6 +86,7 @@ class QueryStatus:
         Returns:
             QueryStatus instance
         """
+        stats_data = data.get("executionStatistics")
         return cls(
             query_id=data.get("queryId", ""),
             completion_status=data.get("completionStatus", ""),
@@ -46,6 +94,9 @@ class QueryStatus:
             row_count=data.get("rowCount", 0),
             chunk_count=data.get("chunkCount", 0),
             expiration_time=data.get("expirationTime"),
+            execution_statistics=(
+                ExecutionStatistics.from_dict(stats_data) if stats_data else None
+            ),
         )
 
     def is_complete(self) -> bool:
