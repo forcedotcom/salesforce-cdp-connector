@@ -13,14 +13,21 @@ class QueryStatus:
     """
     Status information for a query.
 
+    Mirrors the `QuerySqlStatusRepresentation` payload Connect API V3 returns
+    on `GET /services/data/v*/ssot/query-sql/{queryId}`. Fields beyond these
+    are not currently emitted by the server.
+
     Attributes:
-        query_id: Unique identifier for the query
-        completion_status: Status of query execution (Running, ResultsProduced, Finished, etc.)
-        progress: Progress percentage (0.0 to 1.0)
-        row_count: Total number of rows in the result set
-        chunk_count: Number of chunks the results are divided into
-        expiration_time: When the query results expire (if applicable)
+        query_id: Unique identifier for the query.
+        completion_status: ``Running`` / ``ResultsProduced`` / ``Finished`` /
+            ``Unspecified`` (case may vary; ``is_complete()`` normalizes).
+        progress: Server-side progress estimate, 0.0 to 1.0.
+        row_count: Total rows in the result set.
+        chunk_count: Number of chunks the result is divided into.
+        expiration_time: When the result expires from the server (string;
+            often a protobuf-text representation of a timestamp).
     """
+
     query_id: str
     completion_status: str
     progress: float
@@ -30,15 +37,7 @@ class QueryStatus:
 
     @classmethod
     def from_dict(cls, data: dict) -> "QueryStatus":
-        """
-        Create QueryStatus from API response dictionary.
-
-        Args:
-            data: Status dictionary from API response
-
-        Returns:
-            QueryStatus instance
-        """
+        """Create QueryStatus from a Connect API status payload dictionary."""
         return cls(
             query_id=data.get("queryId", ""),
             completion_status=data.get("completionStatus", ""),
@@ -52,23 +51,15 @@ class QueryStatus:
         """
         Check if the query has completed execution.
 
-        The completion status is case-insensitive and may use different formats:
-        - "ResultsProduced" or "RESULTSPRODUCED" or "RESULTS_PRODUCED"
-        - "Finished" or "FINISHED"
-
-        Returns:
-            True if query is complete, False otherwise
+        The completion status is case-insensitive and may use different
+        formats: ``ResultsProduced`` / ``RESULTSPRODUCED`` /
+        ``RESULTS_PRODUCED`` / ``Finished`` / ``FINISHED``.
         """
         status_upper = self.completion_status.upper().replace("_", "")
         return status_upper in ("RESULTSPRODUCED", "FINISHED")
 
     def is_running(self) -> bool:
-        """
-        Check if the query is still running.
-
-        Returns:
-            True if query is running, False otherwise
-        """
+        """Check if the query is still running."""
         return not self.is_complete()
 
 

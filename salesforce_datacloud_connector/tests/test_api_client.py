@@ -6,6 +6,7 @@ import pytest
 import responses
 
 from salesforce_datacloud_connector.api.client import DataCloudQueryClient
+from salesforce_datacloud_connector.api.models import QueryStatus
 from salesforce_datacloud_connector.exceptions import ProgrammingError
 
 
@@ -367,3 +368,49 @@ def test_auth_token_included():
     )
 
     client.execute_query("SELECT 1")
+
+
+def test_query_status_from_dict_real_payload():
+    """Verbatim shape Connect API V3 returns on `GET /ssot/query-sql/{id}`."""
+    status = QueryStatus.from_dict(
+        {
+            "queryId": "q1",
+            "completionStatus": "Finished",
+            "progress": 1.0,
+            "rowCount": 1288,
+            "chunkCount": 1,
+            "expirationTime": "seconds: 1738344542\n",
+        }
+    )
+
+    assert status.query_id == "q1"
+    assert status.is_complete()
+    assert status.row_count == 1288
+    assert status.chunk_count == 1
+    assert status.progress == 1.0
+    assert status.expiration_time == "seconds: 1738344542\n"
+
+
+def test_query_status_from_empty_dict_does_not_throw():
+    status = QueryStatus.from_dict({})
+    assert status.query_id == ""
+    assert status.completion_status == ""
+    assert status.progress == 0.0
+    assert status.row_count == 0
+    assert status.chunk_count == 0
+    assert status.expiration_time is None
+
+
+def test_query_status_unknown_keys_ignored():
+    """Forward-compat: extra fields the server may add later must not raise."""
+    status = QueryStatus.from_dict(
+        {
+            "queryId": "q1",
+            "completionStatus": "Finished",
+            "progress": 1.0,
+            "rowCount": 0,
+            "chunkCount": 0,
+            "newServerSideField": {"foo": "bar"},
+        }
+    )
+    assert status.is_complete()
