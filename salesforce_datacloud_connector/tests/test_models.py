@@ -1,6 +1,5 @@
 """Tests for API models."""
 
-import pytest
 
 from salesforce_datacloud_connector.api.models import QueryStatus, ColumnMetadata, QueryResponse
 

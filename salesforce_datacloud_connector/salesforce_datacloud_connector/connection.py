@@ -45,7 +45,7 @@ class Connection:
         # Create API client
         # Note: instance_url is obtained from OAuth response, not user input
         self._client = DataCloudQueryClient(
-            instance_url=authenticator.get_instance_url(),
+            tenant_endpoint=authenticator.get_instance_url(),
             auth_token_getter=authenticator.get_oauth_token,
             dataspace=dataspace,
             workload=workload,

@@ -297,16 +297,23 @@ def test_get_query_status_with_long_polling():
     """Test query status with long-polling."""
     def check_request(request):
         assert "waitTimeMs" in request.url
-        return (200, {}, '{"status": {"queryId": "q1", "completionStatus": "Running", "progress": 0.8, "rowCount": 0, "chunkCount": 0}}')
+        status_header = {
+            "queryId": "q1",
+            "completionStatus": "RUNNING_OR_UNSPECIFIED",
+            "progress": 0.8,
+            "rowCount": 0,
+            "chunkCount": 0
+        }
+        return (200, {"x-hyperdb-status": json.dumps(status_header)}, '{"metadata":{"columns":[]},"data":null,"returnedRows":0}')
 
     responses.add_callback(
         responses.GET,
-        "https://test.salesforce.com/services/data/v64.0/ssot/query-sql/q1",
+        "https://test.c360a.salesforce.com/api/v3/query/q1",
         callback=check_request,
     )
 
     client = DataCloudQueryClient(
-        instance_url="https://test.salesforce.com",
+        tenant_endpoint="https://test.c360a.salesforce.com",
         auth_token_getter=mock_token_getter,
     )
 
@@ -315,46 +322,24 @@ def test_get_query_status_with_long_polling():
 
 
 @responses.activate
-def test_fetch_results():
-    """Test fetching query results."""
-    responses.add(
-        responses.GET,
-        "https://test.salesforce.com/services/data/v64.0/ssot/query-sql/query123/rows",
-        json={
-            "data": [["row1"], ["row2"]],
-            "returnedRows": 2,
-        },
-        status=200,
-    )
-
-    client = DataCloudQueryClient(
-        instance_url="https://test.salesforce.com",
-        auth_token_getter=mock_token_getter,
-    )
-
-    response = client.fetch_results("query123", offset=0, row_limit=100)
-
-    assert len(response.data) == 2
-    assert response.returned_rows == 2
-
-
-@responses.activate
 def test_fetch_results_with_offset():
     """Test fetching results with pagination offset."""
     def check_request(request):
         assert "offset=100" in request.url
-        assert "rowLimit=50" in request.url
-        assert "omitSchema=true" in request.url
+        assert "limit=50" in request.url
+        assert "byteLimit=20971520" in request.url
+        assert "rowLimit" not in request.url
+        assert "omitSchema" not in request.url
         return (200, {}, '{"data": [["row101"]], "returnedRows": 1}')
 
     responses.add_callback(
         responses.GET,
-        "https://test.salesforce.com/services/data/v64.0/ssot/query-sql/query123/rows",
+        "https://test.c360a.salesforce.com/api/v3/query/query123/rows",
         callback=check_request,
     )
 
     client = DataCloudQueryClient(
-        instance_url="https://test.salesforce.com",
+        tenant_endpoint="https://test.c360a.salesforce.com",
         auth_token_getter=mock_token_getter,
     )
 
@@ -363,59 +348,44 @@ def test_fetch_results_with_offset():
 
 
 @responses.activate
-def test_cancel_query():
-    """Test canceling a query."""
-    responses.add(
-        responses.DELETE,
-        "https://test.salesforce.com/services/data/v64.0/ssot/query-sql/query123",
-        status=204,
-    )
-
-    client = DataCloudQueryClient(
-        instance_url="https://test.salesforce.com",
-        auth_token_getter=mock_token_getter,
-    )
-
-    # Should not raise
-    client.cancel_query("query123")
-
-
-@responses.activate
 def test_retry_on_500():
     """Test automatic retry on 500 errors."""
     # First two calls fail with 500, third succeeds
     responses.add(
         responses.POST,
-        "https://test.salesforce.com/services/data/v64.0/ssot/query-sql",
+        "https://test.c360a.salesforce.com/api/v3/query",
         json={"error": "Internal Server Error"},
         status=500,
     )
     responses.add(
         responses.POST,
-        "https://test.salesforce.com/services/data/v64.0/ssot/query-sql",
+        "https://test.c360a.salesforce.com/api/v3/query",
         json={"error": "Internal Server Error"},
         status=500,
     )
+    status_header = {
+        "queryId": "q1",
+        "completionStatus": "RESULTS_PRODUCED",
+        "progress": 1.0,
+        "rowCount": 0,
+        "chunkCount": 0,
+    }
     responses.add(
         responses.POST,
-        "https://test.salesforce.com/services/data/v64.0/ssot/query-sql",
+        "https://test.c360a.salesforce.com/api/v3/query",
         json={
+            "metadata": {"columns": []},
             "data": [],
-            "metadata": [],
             "returnedRows": 0,
-            "status": {
-                "queryId": "q1",
-                "completionStatus": "ResultsProduced",
-                "progress": 1.0,
-                "rowCount": 0,
-                "chunkCount": 0,
-            },
+        },
+        headers={
+            "x-hyperdb-status": json.dumps(status_header)
         },
         status=200,
     )
 
     client = DataCloudQueryClient(
-        instance_url="https://test.salesforce.com",
+        tenant_endpoint="https://test.c360a.salesforce.com",
         auth_token_getter=mock_token_getter,
     )
 
@@ -430,13 +400,13 @@ def test_no_retry_on_400():
     """Test that 400 errors are not retried."""
     responses.add(
         responses.POST,
-        "https://test.salesforce.com/services/data/v64.0/ssot/query-sql",
+        "https://test.c360a.salesforce.com/api/v3/query",
         json={"message": "SQL syntax error"},
         status=400,
     )
 
     client = DataCloudQueryClient(
-        instance_url="https://test.salesforce.com",
+        tenant_endpoint="https://test.c360a.salesforce.com",
         auth_token_getter=mock_token_getter,
     )
 
@@ -451,17 +421,25 @@ def test_no_retry_on_400():
 def test_workload_parameter():
     """Test that workload parameter is included in requests."""
     def check_request(request):
-        assert "workload=my_app" in request.url
-        return (200, {}, '{"data": [], "metadata": [], "returnedRows": 0, "status": {"queryId": "q1", "completionStatus": "ResultsProduced", "progress": 1.0, "rowCount": 0, "chunkCount": 0}}')
+        assert request.headers.get("x-hyperdb-workload") == "python-connector-v2_my_app"
+        assert "workload=" not in request.url
+        status_header = {
+            "queryId": "q1",
+            "completionStatus": "RESULTS_PRODUCED",
+            "progress": 1.0,
+            "rowCount": 0,
+            "chunkCount": 0
+        }
+        return (200, {"x-hyperdb-status": json.dumps(status_header)}, '{"metadata":{"columns":[]},"data":[],"returnedRows":0}')
 
     responses.add_callback(
         responses.POST,
-        "https://test.salesforce.com/services/data/v64.0/ssot/query-sql",
+        "https://test.c360a.salesforce.com/api/v3/query",
         callback=check_request,
     )
 
     client = DataCloudQueryClient(
-        instance_url="https://test.salesforce.com",
+        tenant_endpoint="https://test.c360a.salesforce.com",
         auth_token_getter=mock_token_getter,
         workload="my_app",
     )
@@ -473,18 +451,25 @@ def test_workload_parameter():
 def test_dataspace_header():
     """Test that dataspace is included as a request header."""
     def check_request(request):
-        assert request.headers.get("dataspace") == "custom_space"
+        assert request.headers.get("ctx-dataspace-ds_name") == "custom_space"
         assert "dataspace" not in request.url
-        return (200, {}, '{"data": [], "metadata": [], "returnedRows": 0, "status": {"queryId": "q1", "completionStatus": "ResultsProduced", "progress": 1.0, "rowCount": 0, "chunkCount": 0}}')
+        status_header = {
+            "queryId": "q1",
+            "completionStatus": "RESULTS_PRODUCED",
+            "progress": 1.0,
+            "rowCount": 0,
+            "chunkCount": 0
+        }
+        return (200, {"x-hyperdb-status": json.dumps(status_header)}, '{"metadata":{"columns":[]},"data":[],"returnedRows":0}')
 
     responses.add_callback(
         responses.POST,
-        "https://test.salesforce.com/services/data/v64.0/ssot/query-sql",
+        "https://test.c360a.salesforce.com/api/v3/query",
         callback=check_request,
     )
 
     client = DataCloudQueryClient(
-        instance_url="https://test.salesforce.com",
+        tenant_endpoint="https://test.c360a.salesforce.com",
         auth_token_getter=mock_token_getter,
         dataspace="custom_space",
     )
@@ -498,16 +483,23 @@ def test_auth_token_included():
     def check_request(request):
         assert "Authorization" in request.headers
         assert request.headers["Authorization"] == "Bearer mock_token_12345"
-        return (200, {}, '{"data": [], "metadata": [], "returnedRows": 0, "status": {"queryId": "q1", "completionStatus": "ResultsProduced", "progress": 1.0, "rowCount": 0, "chunkCount": 0}}')
+        status_header = {
+            "queryId": "q1",
+            "completionStatus": "RESULTS_PRODUCED",
+            "progress": 1.0,
+            "rowCount": 0,
+            "chunkCount": 0
+        }
+        return (200, {"x-hyperdb-status": json.dumps(status_header)}, '{"metadata":{"columns":[]},"data":[],"returnedRows":0}')
 
     responses.add_callback(
         responses.POST,
-        "https://test.salesforce.com/services/data/v64.0/ssot/query-sql",
+        "https://test.c360a.salesforce.com/api/v3/query",
         callback=check_request,
     )
 
     client = DataCloudQueryClient(
-        instance_url="https://test.salesforce.com",
+        tenant_endpoint="https://test.c360a.salesforce.com",
         auth_token_getter=mock_token_getter,
     )
 

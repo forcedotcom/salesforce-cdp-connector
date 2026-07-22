@@ -3,7 +3,7 @@ Tests for DataCloudTokenExchanger (core token → CDP token exchange).
 """
 
 import time
-from unittest.mock import Mock, patch
+from unittest.mock import patch
 
 import pytest
 import responses

@@ -4,6 +4,8 @@ End-to-end integration tests for the driver.
 These tests verify the complete flow: connect → execute → fetch → close
 """
 
+import json
+
 import pytest
 import responses
 
@@ -23,23 +25,28 @@ def test_end_to_end_sync_query():
     )
 
     # Mock query execution
+    status_header = {
+        "queryId": "q1",
+        "completionStatus": "RESULTS_PRODUCED",
+        "progress": 1.0,
+        "rowCount": 3,
+        "chunkCount": 1,
+    }
     responses.add(
         responses.POST,
-        "https://myorg.my.salesforce.com/services/data/v64.0/ssot/query-sql",
+        "https://myorg.my.salesforce.com/api/v3/query",
         json={
-            "data": [["Alice", 30], ["Bob", 25], ["Charlie", 35]],
-            "metadata": [
-                {"name": "name", "type": "Varchar", "nullable": True},
-                {"name": "age", "type": "Numeric", "nullable": False, "scale": 0},
-            ],
-            "returnedRows": 3,
-            "status": {
-                "queryId": "q1",
-                "completionStatus": "ResultsProduced",
-                "progress": 1.0,
-                "rowCount": 3,
-                "chunkCount": 1,
+            "metadata": {
+                "columns": [
+                    {"name": "name", "type": "varchar", "nullable": True},
+                    {"name": "age", "type": "numeric", "nullable": False, "scale": 0},
+                ]
             },
+            "data": [["Alice", 30], ["Bob", 25], ["Charlie", 35]],
+            "returnedRows": 3,
+        },
+        headers={
+            "x-hyperdb-status": json.dumps(status_header)
         },
         status=200,
     )
@@ -88,20 +95,25 @@ def test_end_to_end_with_context_managers():
     )
 
     # Mock query
+    status_header = {
+        "queryId": "q1",
+        "completionStatus": "RESULTS_PRODUCED",
+        "progress": 1.0,
+        "rowCount": 1,
+        "chunkCount": 1,
+    }
     responses.add(
         responses.POST,
-        "https://myorg.my.salesforce.com/services/data/v64.0/ssot/query-sql",
+        "https://myorg.my.salesforce.com/api/v3/query",
         json={
-            "data": [["Result"]],
-            "metadata": [{"name": "col", "type": "Varchar", "nullable": True}],
-            "returnedRows": 1,
-            "status": {
-                "queryId": "q1",
-                "completionStatus": "ResultsProduced",
-                "progress": 1.0,
-                "rowCount": 1,
-                "chunkCount": 1,
+            "metadata": {
+                "columns": [{"name": "col", "type": "varchar", "nullable": True}]
             },
+            "data": [["Result"]],
+            "returnedRows": 1,
+        },
+        headers={
+            "x-hyperdb-status": json.dumps(status_header)
         },
         status=200,
     )
@@ -134,28 +146,28 @@ def test_parameterized_query():
     # Mock query with parameter validation
     def check_parameters(request):
         body = request.body.decode("utf-8")
-        assert '"name": "status"' in body
         assert '"value": "Active"' in body
+        assert '"name"' not in body  # v3 params carry no parameter name
+        status_header = {
+            "queryId": "q1",
+            "completionStatus": "RESULTS_PRODUCED",
+            "progress": 1.0,
+            "rowCount": 1,
+            "chunkCount": 1
+        }
         return (
             200,
-            {},
+            {"x-hyperdb-status": json.dumps(status_header)},
             """{
+                "metadata": {"columns": [{"name": "name", "type": "varchar", "nullable": true}]},
                 "data": [["Alice"]],
-                "metadata": [{"name": "name", "type": "Varchar", "nullable": true}],
-                "returnedRows": 1,
-                "status": {
-                    "queryId": "q1",
-                    "completionStatus": "ResultsProduced",
-                    "progress": 1.0,
-                    "rowCount": 1,
-                    "chunkCount": 1
-                }
+                "returnedRows": 1
             }""",
         )
 
     responses.add_callback(
         responses.POST,
-        "https://myorg.my.salesforce.com/services/data/v64.0/ssot/query-sql",
+        "https://myorg.my.salesforce.com/api/v3/query",
         callback=check_parameters,
     )
 
@@ -187,20 +199,25 @@ def test_large_result_set_with_pagination():
     )
 
     # Mock initial query (returns first chunk)
+    status_header = {
+        "queryId": "q1",
+        "completionStatus": "RESULTS_PRODUCED",
+        "progress": 1.0,
+        "rowCount": 5,  # Total 5 rows
+        "chunkCount": 3,
+    }
     responses.add(
         responses.POST,
-        "https://myorg.my.salesforce.com/services/data/v64.0/ssot/query-sql",
+        "https://myorg.my.salesforce.com/api/v3/query",
         json={
-            "data": [["Row1"], ["Row2"]],
-            "metadata": [{"name": "data", "type": "Varchar", "nullable": True}],
-            "returnedRows": 2,
-            "status": {
-                "queryId": "q1",
-                "completionStatus": "ResultsProduced",
-                "progress": 1.0,
-                "rowCount": 5,  # Total 5 rows
-                "chunkCount": 3,
+            "metadata": {
+                "columns": [{"name": "data", "type": "varchar", "nullable": True}]
             },
+            "data": [["Row1"], ["Row2"]],
+            "returnedRows": 2,
+        },
+        headers={
+            "x-hyperdb-status": json.dumps(status_header)
         },
         status=200,
     )
@@ -208,7 +225,7 @@ def test_large_result_set_with_pagination():
     # Mock second chunk
     responses.add(
         responses.GET,
-        "https://myorg.my.salesforce.com/services/data/v64.0/ssot/query-sql/q1/rows",
+        "https://myorg.my.salesforce.com/api/v3/query/q1/rows",
         json={"data": [["Row3"], ["Row4"]], "returnedRows": 2},
         status=200,
     )
@@ -216,7 +233,7 @@ def test_large_result_set_with_pagination():
     # Mock third chunk
     responses.add(
         responses.GET,
-        "https://myorg.my.salesforce.com/services/data/v64.0/ssot/query-sql/q1/rows",
+        "https://myorg.my.salesforce.com/api/v3/query/q1/rows",
         json={"data": [["Row5"]], "returnedRows": 1},
         status=200,
     )
@@ -251,36 +268,47 @@ def test_async_query_with_polling():
     )
 
     # Mock initial query (async response)
+    initial_status_header = {
+        "queryId": "q1",
+        "completionStatus": "RUNNING_OR_UNSPECIFIED",
+        "progress": 0.5,
+        "rowCount": 0,
+        "chunkCount": 0,
+    }
     responses.add(
         responses.POST,
-        "https://myorg.my.salesforce.com/services/data/v64.0/ssot/query-sql",
+        "https://myorg.my.salesforce.com/api/v3/query",
         json={
-            "data": [],
-            "metadata": [{"name": "result", "type": "Varchar", "nullable": True}],
-            "returnedRows": 0,
-            "status": {
-                "queryId": "q1",
-                "completionStatus": "Running",
-                "progress": 0.5,
-                "rowCount": 0,
-                "chunkCount": 0,
+            "metadata": {
+                "columns": [{"name": "result", "type": "varchar", "nullable": True}]
             },
+            "data": [],
+            "returnedRows": 0,
+        },
+        headers={
+            "x-hyperdb-status": json.dumps(initial_status_header)
         },
         status=200,
     )
 
     # Mock status polling (complete)
+    poll_status_header = {
+        "queryId": "q1",
+        "completionStatus": "FINISHED",
+        "progress": 1.0,
+        "rowCount": 1,
+        "chunkCount": 1,
+    }
     responses.add(
         responses.GET,
-        "https://myorg.my.salesforce.com/services/data/v64.0/ssot/query-sql/q1",
+        "https://myorg.my.salesforce.com/api/v3/query/q1",
         json={
-            "status": {
-                "queryId": "q1",
-                "completionStatus": "Finished",
-                "progress": 1.0,
-                "rowCount": 1,
-                "chunkCount": 1,
-            }
+            "metadata": {"columns": []},
+            "data": None,
+            "returnedRows": 0
+        },
+        headers={
+            "x-hyperdb-status": json.dumps(poll_status_header)
         },
         status=200,
     )
@@ -288,7 +316,7 @@ def test_async_query_with_polling():
     # Mock fetching results
     responses.add(
         responses.GET,
-        "https://myorg.my.salesforce.com/services/data/v64.0/ssot/query-sql/q1/rows",
+        "https://myorg.my.salesforce.com/api/v3/query/q1/rows",
         json={"data": [["Success"]], "returnedRows": 1},
         status=200,
     )
@@ -353,7 +381,7 @@ def test_sql_syntax_error():
     # Mock SQL error
     responses.add(
         responses.POST,
-        "https://myorg.my.salesforce.com/services/data/v64.0/ssot/query-sql",
+        "https://myorg.my.salesforce.com/api/v3/query",
         json={"message": "SQL syntax error near 'INVALID'"},
         status=400,
     )
@@ -384,20 +412,25 @@ def test_cursor_iteration():
     )
 
     # Mock query
+    status_header = {
+        "queryId": "q1",
+        "completionStatus": "RESULTS_PRODUCED",
+        "progress": 1.0,
+        "rowCount": 3,
+        "chunkCount": 1,
+    }
     responses.add(
         responses.POST,
-        "https://myorg.my.salesforce.com/services/data/v64.0/ssot/query-sql",
+        "https://myorg.my.salesforce.com/api/v3/query",
         json={
-            "data": [["Alice"], ["Bob"], ["Charlie"]],
-            "metadata": [{"name": "name", "type": "Varchar", "nullable": True}],
-            "returnedRows": 3,
-            "status": {
-                "queryId": "q1",
-                "completionStatus": "ResultsProduced",
-                "progress": 1.0,
-                "rowCount": 3,
-                "chunkCount": 1,
+            "metadata": {
+                "columns": [{"name": "name", "type": "varchar", "nullable": True}]
             },
+            "data": [["Alice"], ["Bob"], ["Charlie"]],
+            "returnedRows": 3,
+        },
+        headers={
+            "x-hyperdb-status": json.dumps(status_header)
         },
         status=200,
     )
@@ -429,20 +462,25 @@ def test_jwt_authentication():
     )
 
     # Mock query
+    status_header = {
+        "queryId": "q1",
+        "completionStatus": "RESULTS_PRODUCED",
+        "progress": 1.0,
+        "rowCount": 1,
+        "chunkCount": 1,
+    }
     responses.add(
         responses.POST,
-        "https://myorg.my.salesforce.com/services/data/v64.0/ssot/query-sql",
+        "https://myorg.my.salesforce.com/api/v3/query",
         json={
-            "data": [["Test"]],
-            "metadata": [{"name": "col", "type": "Varchar", "nullable": True}],
-            "returnedRows": 1,
-            "status": {
-                "queryId": "q1",
-                "completionStatus": "ResultsProduced",
-                "progress": 1.0,
-                "rowCount": 1,
-                "chunkCount": 1,
+            "metadata": {
+                "columns": [{"name": "col", "type": "varchar", "nullable": True}]
             },
+            "data": [["Test"]],
+            "returnedRows": 1,
+        },
+        headers={
+            "x-hyperdb-status": json.dumps(status_header)
         },
         status=200,
     )
@@ -457,18 +495,16 @@ def test_jwt_authentication():
         )
         rsps.add(
             responses.POST,
-            "https://myorg.my.salesforce.com/services/data/v64.0/ssot/query-sql",
+            "https://myorg.my.salesforce.com/api/v3/query",
             json={
-                "data": [["Test"]],
-                "metadata": [{"name": "col", "type": "Varchar", "nullable": True}],
-                "returnedRows": 1,
-                "status": {
-                    "queryId": "q1",
-                    "completionStatus": "ResultsProduced",
-                    "progress": 1.0,
-                    "rowCount": 1,
-                    "chunkCount": 1,
+                "metadata": {
+                    "columns": [{"name": "col", "type": "varchar", "nullable": True}]
                 },
+                "data": [["Test"]],
+                "returnedRows": 1,
+            },
+            headers={
+                "x-hyperdb-status": json.dumps(status_header)
             },
             status=200,
         )
@@ -508,20 +544,25 @@ def test_refresh_token_authentication():
     )
 
     # Mock query
+    status_header = {
+        "queryId": "q1",
+        "completionStatus": "RESULTS_PRODUCED",
+        "progress": 1.0,
+        "rowCount": 1,
+        "chunkCount": 1,
+    }
     responses.add(
         responses.POST,
-        "https://myorg.my.salesforce.com/services/data/v64.0/ssot/query-sql",
+        "https://myorg.my.salesforce.com/api/v3/query",
         json={
-            "data": [["Test"]],
-            "metadata": [{"name": "col", "type": "Varchar", "nullable": True}],
-            "returnedRows": 1,
-            "status": {
-                "queryId": "q1",
-                "completionStatus": "ResultsProduced",
-                "progress": 1.0,
-                "rowCount": 1,
-                "chunkCount": 1,
+            "metadata": {
+                "columns": [{"name": "col", "type": "varchar", "nullable": True}]
             },
+            "data": [["Test"]],
+            "returnedRows": 1,
+        },
+        headers={
+            "x-hyperdb-status": json.dumps(status_header)
         },
         status=200,
     )
