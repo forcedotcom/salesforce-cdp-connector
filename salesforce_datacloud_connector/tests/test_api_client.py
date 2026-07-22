@@ -196,6 +196,55 @@ def test_get_query_status_v3():
 
 
 @responses.activate
+def test_fetch_results_v3():
+    """Test fetching query results (v3 API)."""
+    def check_request(request):
+        # Verify v3 query parameters
+        assert "offset=0" in request.url
+        assert "limit=1000000" in request.url
+        assert "byteLimit=20971520" in request.url
+        # v3 should not have rowLimit or omitSchema params
+        assert "rowLimit" not in request.url
+        assert "omitSchema" not in request.url
+        # v3 should not have workload param in query string
+        assert "workload=" not in request.url
+
+        return (200, {}, json.dumps({
+            "metadata": {
+                "columns": [
+                    {"name": "id", "type": "numeric", "nullable": False},
+                    {"name": "value", "type": "varchar", "nullable": True}
+                ]
+            },
+            "data": [[1, "first"], [2, "second"]],
+            "returnedRows": 2
+        }))
+
+    responses.add_callback(
+        responses.GET,
+        "https://test.c360a.salesforce.com/api/v3/query/query123/rows",
+        callback=check_request,
+    )
+
+    client = DataCloudQueryClient(
+        tenant_endpoint="https://test.c360a.salesforce.com",
+        auth_token_getter=mock_token_getter,
+    )
+
+    response = client.fetch_results(
+        query_id="query123",
+        offset=0,
+        row_limit=1000000,
+        omit_schema=False
+    )
+
+    assert len(response.data) == 2
+    assert response.data[0] == [1, "first"]
+    assert response.returned_rows == 2
+    assert len(response.metadata) == 2
+
+
+@responses.activate
 def test_get_query_status_with_long_polling():
     """Test query status with long-polling."""
     def check_request(request):

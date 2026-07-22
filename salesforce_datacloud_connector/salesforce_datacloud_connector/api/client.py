@@ -262,36 +262,33 @@ class DataCloudQueryClient:
         omit_schema: bool = True,
     ) -> QueryResponse:
         """
-        Fetch query results (getSqlQueryRows endpoint).
+        Fetch query results via GET /api/v3/query/{queryId}/rows.
 
         Args:
-            query_id: Query ID from execute_query
-            offset: Starting row number (0-based)
-            row_limit: Maximum rows to return (server determines actual chunk size ~2MB)
-            omit_schema: If True, don't return metadata (reduces response size)
+            query_id: Query ID
+            offset: Starting row number (0-based, required in v3)
+            row_limit: Maximum rows to return (default: 1000000, server may limit)
+            omit_schema: If True, omit metadata in response (not used in v3, kept for compatibility)
 
         Returns:
             QueryResponse with rows
 
         Raises:
-            ProgrammingError: If offset is out of range
+            ProgrammingError: If offset is out of range (400)
             OperationalError: For network failures
         """
         url = f"{self._base_url}/{query_id}/rows"
         params = {
             "offset": offset,
-            "rowLimit": row_limit,
-            "omitSchema": "true" if omit_schema else "false",
+            "limit": row_limit,
+            "byteLimit": 20971520,  # 20MB default
         }
-
-        if self.workload:
-            params["workload"] = self.workload
 
         try:
             response = self._make_request("GET", url, params=params)
             return QueryResponse.from_dict(response.json())
         except Exception as e:
-            # Handle "Request out of range" gracefully
+            # Handle "Request out of range" gracefully (400 error)
             if "out of range" in str(e).lower():
                 # Return empty response
                 return QueryResponse(data=[], metadata=[], returned_rows=0)
