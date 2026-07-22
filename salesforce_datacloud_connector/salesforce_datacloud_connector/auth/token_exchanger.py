@@ -45,10 +45,6 @@ class DataCloudTokenExchanger:
         Args:
             core_authenticator: An OAuthAuthenticator instance that provides core tokens
             dataspace: Data space name to pass to the exchange endpoint (optional)
-
-        Note: Verify the constructor signature matches the contract: login_url (default "https://login.salesforce.com"),
-              client_id, client_secret. All instance attributes (self.client_id, self.client_secret) are set from
-              constructor parameters per OAuthAuthenticator pattern.
         """
         self._core_authenticator = core_authenticator
         self._dataspace = dataspace

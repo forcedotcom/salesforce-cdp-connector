@@ -134,7 +134,7 @@ def test_cdp_token_caching_with_60s_buffer():
         assert cdp_token_2 == "cdp_token_1"
         assert len(responses.calls) == first_call_count  # No additional calls
 
-        # Simulate time passing (100 seconds - within 60s buffer of expiry at 150s)
+        # Simulate time passing (100s: past the 60s buffer threshold of 90s = expiry 150s - 60s)
         with patch("time.time", return_value=time.time() + 100):
             # Should trigger re-exchange because current_time >= (expiry - 60)
             # Add mock for second exchange
@@ -247,12 +247,13 @@ def test_cdp_token_invalidation():
         # Invalidate token
         exchanger.invalidate_token()
 
-        # Get token again - should trigger new exchange
-        # Note: The core authenticator may reuse its cached token, so we only guarantee
-        # that a new CDP exchange happens (exchange + revoke = 2 calls minimum)
+        # Get token again - should trigger a new CDP exchange.
+        # The core authenticator's own token is still cached (expires_in=7200, no time
+        # advance), so it is reused without a second /oauth2/token call. Only the CDP
+        # exchange + core-token revoke fire: exactly 2 additional calls.
         cdp_token_2 = exchanger.get_cdp_token()
         assert cdp_token_2 == "cdp_token_2"
-        assert len(responses.calls) >= first_call_count + 2  # At least exchange + revoke
+        assert len(responses.calls) == first_call_count + 2  # exchange + revoke
 
 
 @responses.activate
