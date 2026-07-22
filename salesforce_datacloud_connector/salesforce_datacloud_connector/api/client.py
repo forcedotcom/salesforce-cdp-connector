@@ -16,7 +16,7 @@ import requests
 
 from ..exceptions import OperationalError, map_http_error_to_exception
 from ..types import infer_sql_parameter_type
-from .models import QueryResponse, QueryStatus, SqlParameter
+from .models import QueryResponse, QueryStatus
 
 
 class DataCloudQueryClient:
@@ -150,13 +150,15 @@ class DataCloudQueryClient:
 
     def _convert_parameters(self, params: Optional[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """
-        Convert Python dict parameters to sqlParameters array format.
+        Convert Python dict parameters to v3 parameters array format.
+
+        V3 uses positional parameters (question-mark style), so only type and value are sent.
 
         Args:
-            params: Dictionary of named parameters
+            params: Dictionary of named parameters (names ignored in v3)
 
         Returns:
-            List of parameter dictionaries in API format
+            List of parameter dictionaries in v3 API format: [{"type": "varchar", "value": "..."}]
         """
         if not params:
             return []
@@ -164,9 +166,11 @@ class DataCloudQueryClient:
         sql_params = []
         for name, value in params.items():
             param_type = infer_sql_parameter_type(value)
-            sql_params.append(
-                SqlParameter(name=name, value=value, type=param_type).to_dict()
-            )
+            # V3 parameter format: {"type": "varchar", "value": "..."} (lowercase type)
+            sql_params.append({
+                "type": param_type.lower(),
+                "value": value,
+            })
 
         return sql_params
 
@@ -177,35 +181,44 @@ class DataCloudQueryClient:
         row_limit: int = 1000000,
     ) -> QueryResponse:
         """
-        Execute a SQL query (createSqlQuery endpoint).
+        Execute a SQL query via POST /api/v3/query.
 
         Args:
-            sql: SQL query string (may contain :param placeholders)
-            parameters: Named parameters dict (e.g., {"param": "value"})
-            row_limit: Maximum rows to return in initial response (server may limit)
+            sql: SQL query string
+            parameters: Named parameters dict (e.g., {"status": "Active"})
+            row_limit: Maximum rows to return (passed as queryRowLimit)
 
         Returns:
             QueryResponse with initial results and status
 
         Raises:
-            ProgrammingError: For SQL syntax errors
-            OperationalError: For auth/network failures
+            ProgrammingError: For SQL syntax errors (400)
+            OperationalError: For auth/network failures (401, 403, 500+)
         """
-        params = {}
-        if self.workload:
-            params["workload"] = self.workload
-
         request_body = {
             "sql": sql,
-            "rowLimit": row_limit,
+            "transferMode": "ADAPTIVE",
+            "queryRowLimit": row_limit,
         }
 
-        # Add parameters if provided
+        # Add parameters if provided (v3 uses positional parameters)
         if parameters:
-            request_body["sqlParameters"] = self._convert_parameters(parameters)
+            request_body["parameters"] = self._convert_parameters(parameters)
 
-        response = self._make_request("POST", self._base_url, params=params, json_data=request_body)
-        return QueryResponse.from_dict(response.json())
+        response = self._make_request("POST", self._base_url, json_data=request_body)
+
+        # Parse response body
+        body = response.json()
+        query_response = QueryResponse.from_dict(body)
+
+        # Parse status from x-hyperdb-status header (v3)
+        status_header = response.headers.get("x-hyperdb-status")
+        if status_header:
+            import json
+            status_data = json.loads(status_header)
+            query_response.status = QueryStatus.from_dict(status_data)
+
+        return query_response
 
     def get_query_status(
         self, query_id: str, wait_time_ms: Optional[int] = None

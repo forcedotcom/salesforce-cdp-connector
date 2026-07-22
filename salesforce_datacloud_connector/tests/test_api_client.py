@@ -2,6 +2,8 @@
 Tests for Data Cloud Query API client.
 """
 
+import json
+
 import pytest
 import responses
 
@@ -15,31 +17,42 @@ def mock_token_getter():
 
 
 @responses.activate
-def test_execute_query_sync():
-    """Test executing a query that returns synchronous results."""
+def test_execute_query_sync_v3():
+    """Test executing a query that returns synchronous results (v3 API)."""
+    status_header = {
+        "queryId": "MTAuMjQuMTIzLjE5NDo3NDg0_cb6991ab",
+        "completionStatus": "RESULTS_PRODUCED",
+        "chunkCount": 1,
+        "rowCount": 2,
+        "progress": 1.0,
+        "expirationTime": "2025-09-26T10:55:07.438Z",
+        "executionStats": {
+            "wallClockTime": 1.122854338,
+            "rowsProcessed": 2
+        }
+    }
+
     responses.add(
         responses.POST,
-        "https://test.salesforce.com/services/data/v64.0/ssot/query-sql",
+        "https://test.c360a.salesforce.com/api/v3/query",
         json={
-            "data": [["Alice", 30], ["Bob", 25]],
-            "metadata": [
-                {"name": "name", "type": "Varchar", "nullable": True},
-                {"name": "age", "type": "Numeric", "nullable": False, "precision": 10, "scale": 0},
-            ],
-            "returnedRows": 2,
-            "status": {
-                "queryId": "query123",
-                "completionStatus": "ResultsProduced",
-                "progress": 1.0,
-                "rowCount": 2,
-                "chunkCount": 1,
+            "metadata": {
+                "columns": [
+                    {"name": "name", "type": "varchar", "nullable": True},
+                    {"name": "age", "type": "numeric", "nullable": False, "precision": 10, "scale": 0},
+                ]
             },
+            "data": [["Alice", 30], ["Bob", 25]],
+            "returnedRows": 2
+        },
+        headers={
+            "x-hyperdb-status": json.dumps(status_header)
         },
         status=200,
     )
 
     client = DataCloudQueryClient(
-        instance_url="https://test.salesforce.com",
+        tenant_endpoint="https://test.c360a.salesforce.com",
         auth_token_getter=mock_token_getter,
     )
 
@@ -48,35 +61,41 @@ def test_execute_query_sync():
     assert len(response.data) == 2
     assert response.data[0] == ["Alice", 30]
     assert response.returned_rows == 2
-    assert response.status.query_id == "query123"
+    assert response.status.query_id == "MTAuMjQuMTIzLjE5NDo3NDg0_cb6991ab"
     assert response.status.is_complete()
 
 
 @responses.activate
-def test_execute_query_async():
-    """Test executing a query that returns async status."""
+def test_execute_query_async_v3():
+    """Test executing a query that returns async status (v3 API)."""
+    status_header = {
+        "queryId": "MTAuMjQuMTIzLjE5NDo3NDg0_cb6991ab-async",
+        "completionStatus": "RUNNING_OR_UNSPECIFIED",
+        "chunkCount": 0,
+        "rowCount": 0,
+        "progress": 0.5,
+    }
+
     responses.add(
         responses.POST,
-        "https://test.salesforce.com/services/data/v64.0/ssot/query-sql",
+        "https://test.c360a.salesforce.com/api/v3/query",
         json={
-            "data": [],
-            "metadata": [
-                {"name": "name", "type": "Varchar", "nullable": True},
-            ],
-            "returnedRows": 0,
-            "status": {
-                "queryId": "query456",
-                "completionStatus": "Running",
-                "progress": 0.5,
-                "rowCount": 0,
-                "chunkCount": 0,
+            "metadata": {
+                "columns": [
+                    {"name": "name", "type": "varchar", "nullable": True},
+                ]
             },
+            "data": None,
+            "returnedRows": 0
+        },
+        headers={
+            "x-hyperdb-status": json.dumps(status_header)
         },
         status=200,
     )
 
     client = DataCloudQueryClient(
-        instance_url="https://test.salesforce.com",
+        tenant_endpoint="https://test.c360a.salesforce.com",
         auth_token_getter=mock_token_getter,
     )
 
@@ -84,33 +103,55 @@ def test_execute_query_async():
 
     assert response.status.is_running()
     assert not response.status.is_complete()
-    assert response.status.query_id == "query456"
+    assert response.status.query_id == "MTAuMjQuMTIzLjE5NDo3NDg0_cb6991ab-async"
+    assert response.status.completion_status == "RUNNING"  # normalized
+    assert response.data is None or response.data == []
 
 
 @responses.activate
-def test_execute_query_with_parameters():
-    """Test executing a parameterized query."""
+def test_execute_query_with_parameters_v3():
+    """Test executing a parameterized query (v3 API)."""
     def check_request(request):
-        body = request.body.decode("utf-8")
-        assert "sqlParameters" in body
-        assert '"name": "status"' in body
-        assert '"value": "Active"' in body
-        assert '"type": "Varchar"' in body
-        return (200, {}, '{"data": [], "metadata": [], "returnedRows": 0, "status": {"queryId": "q1", "completionStatus": "ResultsProduced", "progress": 1.0, "rowCount": 0, "chunkCount": 0}}')
+        import json
+        body = json.loads(request.body.decode("utf-8"))
+        assert "parameters" in body
+        assert len(body["parameters"]) == 1
+        assert body["parameters"][0]["type"] == "varchar"
+        assert body["parameters"][0]["value"] == "Active"
+        # V3 does not include parameter names
+        assert "name" not in body["parameters"][0]
+
+        status_header = {
+            "queryId": "q1",
+            "completionStatus": "RESULTS_PRODUCED",
+            "progress": 1.0,
+            "rowCount": 0,
+            "chunkCount": 0
+        }
+
+        return (
+            200,
+            {"x-hyperdb-status": json.dumps(status_header)},
+            json.dumps({
+                "metadata": {"columns": []},
+                "data": [],
+                "returnedRows": 0
+            })
+        )
 
     responses.add_callback(
         responses.POST,
-        "https://test.salesforce.com/services/data/v64.0/ssot/query-sql",
+        "https://test.c360a.salesforce.com/api/v3/query",
         callback=check_request,
     )
 
     client = DataCloudQueryClient(
-        instance_url="https://test.salesforce.com",
+        tenant_endpoint="https://test.c360a.salesforce.com",
         auth_token_getter=mock_token_getter,
     )
 
     response = client.execute_query(
-        "SELECT * FROM users WHERE status = :status",
+        "SELECT * FROM users WHERE status = ?",
         parameters={"status": "Active"}
     )
 
