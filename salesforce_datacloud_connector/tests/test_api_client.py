@@ -293,6 +293,62 @@ def test_error_response_v3():
 
 
 @responses.activate
+def test_poll_until_complete_v3():
+    """Test polling until query completes (v3 API)."""
+    # First poll: still running
+    responses.add(
+        responses.GET,
+        "https://test.c360a.salesforce.com/api/v3/query/query123",
+        json={
+            "metadata": {"columns": []},
+            "data": None,
+            "returnedRows": 0
+        },
+        headers={
+            "x-hyperdb-status": json.dumps({
+                "queryId": "query123",
+                "completionStatus": "RUNNING_OR_UNSPECIFIED",
+                "progress": 0.5,
+                "rowCount": 0,
+                "chunkCount": 0,
+            })
+        },
+        status=200,
+    )
+
+    # Second poll: completed
+    responses.add(
+        responses.GET,
+        "https://test.c360a.salesforce.com/api/v3/query/query123",
+        json={
+            "metadata": {"columns": []},
+            "data": None,
+            "returnedRows": 0
+        },
+        headers={
+            "x-hyperdb-status": json.dumps({
+                "queryId": "query123",
+                "completionStatus": "FINISHED",
+                "progress": 1.0,
+                "rowCount": 100,
+                "chunkCount": 1,
+            })
+        },
+        status=200,
+    )
+
+    client = DataCloudQueryClient(
+        tenant_endpoint="https://test.c360a.salesforce.com",
+        auth_token_getter=mock_token_getter,
+    )
+
+    status = client.poll_until_complete("query123", poll_interval_ms=100, timeout_seconds=10)
+
+    assert status.is_complete()
+    assert status.row_count == 100
+
+
+@responses.activate
 def test_get_query_status_with_long_polling():
     """Test query status with long-polling."""
     def check_request(request):
