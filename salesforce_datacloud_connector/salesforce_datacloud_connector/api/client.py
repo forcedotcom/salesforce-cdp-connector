@@ -296,7 +296,7 @@ class DataCloudQueryClient:
 
     def cancel_query(self, query_id: str):
         """
-        Cancel a running query (cancelSqlQuery endpoint).
+        Cancel a running query via DELETE /api/v3/query/{queryId}.
 
         Args:
             query_id: Query ID to cancel

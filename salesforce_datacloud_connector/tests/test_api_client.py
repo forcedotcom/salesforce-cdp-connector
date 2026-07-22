@@ -245,6 +245,24 @@ def test_fetch_results_v3():
 
 
 @responses.activate
+def test_cancel_query_v3():
+    """Test cancelling a running query (v3 API)."""
+    responses.add(
+        responses.DELETE,
+        "https://test.c360a.salesforce.com/api/v3/query/query123",
+        status=204,  # v3 returns 204 No Content on success
+    )
+
+    client = DataCloudQueryClient(
+        tenant_endpoint="https://test.c360a.salesforce.com",
+        auth_token_getter=mock_token_getter,
+    )
+
+    # Should not raise any exception
+    client.cancel_query("query123")
+
+
+@responses.activate
 def test_get_query_status_with_long_polling():
     """Test query status with long-polling."""
     def check_request(request):
