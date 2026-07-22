@@ -224,14 +224,14 @@ class DataCloudQueryClient:
         self, query_id: str, wait_time_ms: Optional[int] = None
     ) -> QueryStatus:
         """
-        Get query status (getSqlQuery endpoint).
+        Get query status via GET /api/v3/query/{queryId}.
 
         Args:
             query_id: Query ID from execute_query
             wait_time_ms: Milliseconds to wait before returning (long-polling, max 10000)
 
         Returns:
-            QueryStatus object
+            QueryStatus object (parsed from x-hyperdb-status header)
 
         Raises:
             OperationalError: For network failures
@@ -244,8 +244,15 @@ class DataCloudQueryClient:
             params["waitTimeMs"] = min(wait_time_ms, self.MAX_WAIT_TIME_MS)
 
         response = self._make_request("GET", url, params=params)
-        data = response.json()
-        return QueryStatus.from_dict(data.get("status", {}))
+
+        # Parse status from x-hyperdb-status header (v3)
+        status_header = response.headers.get("x-hyperdb-status")
+        if not status_header:
+            raise OperationalError("Missing x-hyperdb-status header in response")
+
+        import json
+        status_data = json.loads(status_header)
+        return QueryStatus.from_dict(status_data)
 
     def fetch_results(
         self,

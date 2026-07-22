@@ -159,25 +159,32 @@ def test_execute_query_with_parameters_v3():
 
 
 @responses.activate
-def test_get_query_status():
-    """Test getting query status."""
+def test_get_query_status_v3():
+    """Test getting query status (v3 API)."""
+    status_header = {
+        "queryId": "query123",
+        "completionStatus": "FINISHED",
+        "progress": 1.0,
+        "rowCount": 1000,
+        "chunkCount": 1,
+    }
+
     responses.add(
         responses.GET,
-        "https://test.salesforce.com/services/data/v64.0/ssot/query-sql/query123",
+        "https://test.c360a.salesforce.com/api/v3/query/query123",
         json={
-            "status": {
-                "queryId": "query123",
-                "completionStatus": "Finished",
-                "progress": 1.0,
-                "rowCount": 1000,
-                "chunkCount": 1,
-            }
+            "metadata": {"columns": []},
+            "data": None,
+            "returnedRows": 0
+        },
+        headers={
+            "x-hyperdb-status": json.dumps(status_header)
         },
         status=200,
     )
 
     client = DataCloudQueryClient(
-        instance_url="https://test.salesforce.com",
+        tenant_endpoint="https://test.c360a.salesforce.com",
         auth_token_getter=mock_token_getter,
     )
 
