@@ -136,7 +136,11 @@ class DataCloudQueryClient:
             raise OperationalError(f"Request failed: {e}") from e
 
     def _raise_api_error(self, response: requests.Response):
-        """Raise appropriate exception for API error response."""
+        """
+        Raise appropriate exception for API error response.
+
+        V3 error body: {"timestamp", "error", "message", "path", "tenantId", "internalErrorCode", "details"}
+        """
         try:
             error_data = response.json()
             error_message = error_data.get("message", response.text)

@@ -263,6 +263,36 @@ def test_cancel_query_v3():
 
 
 @responses.activate
+def test_error_response_v3():
+    """Test v3 error response mapping."""
+    responses.add(
+        responses.POST,
+        "https://test.c360a.salesforce.com/api/v3/query",
+        json={
+            "timestamp": "2026-07-22T10:55:07.000+00:00",
+            "error": "COMMON_ERROR_GENERIC",
+            "message": "SQL syntax error: unexpected token",
+            "path": "/api/v3/query",
+            "tenantId": "tenant123",
+            "internalErrorCode": "COMMON_ERROR_GENERIC",
+            "details": {}
+        },
+        status=400,
+    )
+
+    client = DataCloudQueryClient(
+        tenant_endpoint="https://test.c360a.salesforce.com",
+        auth_token_getter=mock_token_getter,
+    )
+
+    with pytest.raises(ProgrammingError) as exc_info:
+        client.execute_query("SELECT * FROM invalid syntax")
+
+    assert "SQL syntax error" in str(exc_info.value)
+    assert exc_info.value.http_status == 400
+
+
+@responses.activate
 def test_get_query_status_with_long_polling():
     """Test query status with long-polling."""
     def check_request(request):
