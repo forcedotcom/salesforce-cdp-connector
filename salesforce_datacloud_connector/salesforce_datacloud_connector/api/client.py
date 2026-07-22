@@ -27,9 +27,6 @@ class DataCloudQueryClient:
     Includes automatic retry logic for transient failures.
     """
 
-    # API version to use (matches reference Java implementation)
-    API_VERSION = "v64.0"
-
     # Retry configuration
     MAX_RETRIES = 3
     RETRY_WAIT_SECONDS = 5
@@ -39,35 +36,42 @@ class DataCloudQueryClient:
 
     def __init__(
         self,
-        instance_url: str,
+        tenant_endpoint: str,
         auth_token_getter: callable,
         dataspace: Optional[str] = None,
         workload: Optional[str] = None,
     ):
         """
-        Initialize the API client.
+        Initialize the API client for off-core Query v3.
 
         Args:
-            instance_url: Salesforce instance URL
-            auth_token_getter: Callable that returns a valid OAuth token
+            tenant_endpoint: Data Cloud tenant endpoint (e.g., https://{tenant}.c360a.salesforce.com)
+            auth_token_getter: Callable that returns a valid CDP token
             dataspace: Data space name (default: "default")
-            workload: Optional workload name for logging/debugging
+            workload: Optional workload name for observability
         """
-        self.instance_url = instance_url.rstrip("/")
+        self.tenant_endpoint = tenant_endpoint.rstrip("/")
         self.auth_token_getter = auth_token_getter
-        self.dataspace = dataspace
+        self.dataspace = dataspace or "default"
         self.workload = workload
-        self._base_url = f"{self.instance_url}/services/data/{self.API_VERSION}/ssot/query-sql"
+        self._base_url = f"{self.tenant_endpoint}/api/v3/query"
 
     def _get_headers(self) -> Dict[str, str]:
-        """Get headers for API requests, including auth token and dataspace."""
+        """Get headers for v3 API requests."""
         token = self.auth_token_getter()
         headers = {
             "Authorization": f"Bearer {token}",
             "Content-Type": "application/json",
+            "Accept": "application/json",
+            "ctx-dataspace-ds_name": self.dataspace,
         }
-        if self.dataspace:
-            headers["dataspace"] = self.dataspace
+
+        # Add workload header if specified
+        if self.workload:
+            headers["x-hyperdb-workload"] = f"python-connector-v2_{self.workload}"
+        else:
+            headers["x-hyperdb-workload"] = "python-connector-v2"
+
         return headers
 
     def _make_request(
