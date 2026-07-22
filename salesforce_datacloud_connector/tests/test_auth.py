@@ -312,3 +312,59 @@ def test_missing_instance_url_in_response():
 
     with pytest.raises(OperationalError, match="No instance_url in response"):
         auth.get_oauth_token()
+
+
+@responses.activate
+def test_client_credentials_auth_success():
+    """Test successful client credentials authentication."""
+    responses.add(
+        responses.POST,
+        "https://test.salesforce.com/services/oauth2/token",
+        json={
+            "access_token": "client_creds_token_12345",
+            "expires_in": 7200,
+            "token_type": "Bearer",
+            "instance_url": "https://myorg.my.salesforce.com",
+        },
+        status=200,
+    )
+
+    from salesforce_datacloud_connector.auth.oauth import ClientCredentialsAuthenticator
+
+    auth = ClientCredentialsAuthenticator(
+        login_url="https://test.salesforce.com",
+        client_id="client_id",
+        client_secret="client_secret",
+    )
+
+    token = auth.get_oauth_token()
+    assert token == "client_creds_token_12345"
+
+    # Verify request parameters
+    assert len(responses.calls) == 1
+    request_body = responses.calls[0].request.body
+    assert "grant_type=client_credentials" in request_body
+    assert "client_id=client_id" in request_body
+    assert "client_secret=client_secret" in request_body
+
+
+@responses.activate
+def test_client_credentials_auth_failure():
+    """Test failed client credentials authentication."""
+    responses.add(
+        responses.POST,
+        "https://test.salesforce.com/services/oauth2/token",
+        json={"error": "invalid_client"},
+        status=401,
+    )
+
+    from salesforce_datacloud_connector.auth.oauth import ClientCredentialsAuthenticator
+
+    auth = ClientCredentialsAuthenticator(
+        login_url="https://test.salesforce.com",
+        client_id="invalid_client",
+        client_secret="wrong_secret",
+    )
+
+    with pytest.raises(OperationalError):
+        auth.get_oauth_token()

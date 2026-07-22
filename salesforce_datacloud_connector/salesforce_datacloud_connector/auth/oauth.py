@@ -329,3 +329,63 @@ class RefreshTokenAuthenticator(OAuthAuthenticator):
             raise OperationalError(
                 f"Authentication failed with refresh token: {e}"
             ) from e
+
+
+class ClientCredentialsAuthenticator(OAuthAuthenticator):
+    """
+    OAuth 2.0 Client Credentials flow.
+
+    This flow uses only client_id and client_secret to authenticate.
+    It's suitable for server-to-server integrations where no user context
+    is required (e.g., Data Cloud connectors with appropriate permissions).
+    """
+
+    def __init__(
+        self,
+        login_url: str = "https://login.salesforce.com",
+        client_id: str = None,
+        client_secret: str = None,
+    ):
+        """
+        Initialize client credentials authenticator.
+
+        Args:
+            login_url: Salesforce login URL (default: "https://login.salesforce.com")
+            client_id: Connected app client ID
+            client_secret: Connected app client secret
+        """
+        super().__init__(login_url)
+        self.client_id = client_id
+        self.client_secret = client_secret
+
+    def _fetch_new_token(self) -> tuple[str, int, str]:
+        """Fetch OAuth token using client credentials flow."""
+        token_url = f"{self.login_url}/services/oauth2/token"
+
+        data = {
+            "grant_type": "client_credentials",
+            "client_id": self.client_id,
+            "client_secret": self.client_secret,
+        }
+
+        try:
+            response = requests.post(token_url, data=data, timeout=30)
+            response.raise_for_status()
+            token_data = response.json()
+
+            access_token = token_data.get("access_token")
+            expires_in = token_data.get("expires_in", 7200)
+            instance_url = token_data.get("instance_url")
+
+            if not access_token:
+                raise OperationalError("No access token in response")
+
+            if not instance_url:
+                raise OperationalError("No instance_url in response")
+
+            return access_token, expires_in, instance_url
+
+        except requests.exceptions.RequestException as e:
+            raise OperationalError(
+                f"Authentication failed with client credentials: {e}"
+            ) from e

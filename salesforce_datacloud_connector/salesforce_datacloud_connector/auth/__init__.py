@@ -1,6 +1,7 @@
 """Authentication module for Salesforce Data Cloud."""
 
 from .oauth import (
+    ClientCredentialsAuthenticator,
     JWTAuthenticator,
     OAuthAuthenticator,
     RefreshTokenAuthenticator,
@@ -13,5 +14,6 @@ __all__ = [
     "UsernamePasswordAuthenticator",
     "JWTAuthenticator",
     "RefreshTokenAuthenticator",
+    "ClientCredentialsAuthenticator",
     "DataCloudTokenExchanger",
 ]
