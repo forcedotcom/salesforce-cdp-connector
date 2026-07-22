@@ -504,3 +504,68 @@ def test_import_from_auth_module():
     """Test that DataCloudTokenExchanger can be imported from auth module."""
     from salesforce_datacloud_connector.auth import DataCloudTokenExchanger
     assert DataCloudTokenExchanger is not None
+
+
+@responses.activate
+def test_client_credentials_token_exchange_success():
+    """Test successful core token → CDP token exchange using client credentials authenticator."""
+    # Mock core token fetch (client credentials flow)
+    responses.add(
+        responses.POST,
+        "https://test.salesforce.com/services/oauth2/token",
+        json={
+            "access_token": "core_token_client_creds",
+            "expires_in": 7200,
+            "instance_url": "https://myorg.my.salesforce.com",
+        },
+        status=200,
+    )
+
+    # Mock CDP token exchange
+    responses.add(
+        responses.POST,
+        "https://myorg.my.salesforce.com/services/a360/token",
+        json={
+            "access_token": "cdp_token_from_client_creds",
+            "expires_in": 3600,
+            "instance_url": "https://tenant456.c360a.salesforce.com",
+        },
+        status=200,
+    )
+
+    # Mock core token revocation
+    responses.add(
+        responses.POST,
+        "https://myorg.my.salesforce.com/services/oauth2/revoke",
+        status=200,
+    )
+
+    from salesforce_datacloud_connector.auth.oauth import ClientCredentialsAuthenticator
+
+    # Create client credentials authenticator
+    client_creds_auth = ClientCredentialsAuthenticator(
+        login_url="https://test.salesforce.com",
+        client_id="test_client_id",
+        client_secret="test_client_secret",
+    )
+
+    # Create exchanger
+    exchanger = DataCloudTokenExchanger(
+        core_authenticator=client_creds_auth,
+        dataspace="default",
+    )
+
+    # Get CDP token
+    cdp_token = exchanger.get_cdp_token()
+    assert cdp_token == "cdp_token_from_client_creds"
+
+    # Verify tenant endpoint
+    tenant_endpoint = exchanger.get_tenant_endpoint()
+    assert tenant_endpoint == "https://tenant456.c360a.salesforce.com"
+
+    # Verify request sequence: client creds auth → exchange → revoke
+    assert len(responses.calls) == 3
+    assert "/services/oauth2/token" in responses.calls[0].request.url  # Core token
+    assert "grant_type=client_credentials" in responses.calls[0].request.body
+    assert "/services/a360/token" in responses.calls[1].request.url  # Exchange
+    assert "/services/oauth2/revoke" in responses.calls[2].request.url  # Revoke
