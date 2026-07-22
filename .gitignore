@@ -134,3 +134,8 @@ dmypy.json
 # Mac files
 .DS_Store
 
+# Internal planning / design docs — must NOT be pushed to the public OSS repo
+/262-connectors-python-plan.md
+/official/
+/docs/superpowers/
+
