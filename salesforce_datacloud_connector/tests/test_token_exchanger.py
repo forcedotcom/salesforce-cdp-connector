@@ -498,3 +498,9 @@ def test_dataspace_omitted_if_none():
         # Verify dataspace was NOT included in exchange request
         exchange_call = [c for c in responses.calls if "/services/a360/token" in c.request.url][0]
         assert "dataspace=" not in exchange_call.request.url
+
+
+def test_import_from_auth_module():
+    """Test that DataCloudTokenExchanger can be imported from auth module."""
+    from salesforce_datacloud_connector.auth import DataCloudTokenExchanger
+    assert DataCloudTokenExchanger is not None
