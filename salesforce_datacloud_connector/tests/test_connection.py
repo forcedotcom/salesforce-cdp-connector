@@ -6,18 +6,17 @@ from unittest.mock import Mock
 
 import pytest
 
-from salesforce_datacloud_connector.auth.oauth import OAuthAuthenticator
 from salesforce_datacloud_connector.connection import Connection
 from salesforce_datacloud_connector.cursor import Cursor
 from salesforce_datacloud_connector.exceptions import InterfaceError
 
 
 def create_mock_authenticator():
-    """Create a mock authenticator for testing."""
-    auth = Mock(spec=OAuthAuthenticator)
-    auth.get_instance_url.return_value = "https://test.salesforce.com"
-    auth.get_oauth_token.return_value = "mock_token"
-    return auth
+    """Create a mock token provider for testing."""
+    provider = Mock()
+    provider.get_tenant_endpoint.return_value = "https://test.c360a.salesforce.com"
+    provider.get_cdp_token.return_value = "mock_cdp_token"
+    return provider
 
 
 def test_connection_initialization():
@@ -173,3 +172,86 @@ def test_no_workload_by_default():
     conn = Connection(auth)
 
     assert conn.workload is None
+
+
+def test_connect_wires_token_exchanger():
+    """Test that connect() creates DataCloudTokenExchanger and passes it to Connection."""
+    from unittest.mock import patch
+    import salesforce_datacloud_connector as sfdc
+    from salesforce_datacloud_connector.auth.token_exchanger import DataCloudTokenExchanger
+    from salesforce_datacloud_connector.auth.oauth import JWTAuthenticator
+
+    # Mock the JWT authenticator's token fetch, the exchange, and the revoke
+    # (patch _revoke_core_token so no live HTTP call escapes during connect()).
+    with patch.object(JWTAuthenticator, '_fetch_new_token', return_value=("core_token", 7200, "https://test.salesforce.com")), \
+         patch.object(DataCloudTokenExchanger, '_exchange_token', return_value=("cdp_token", 7200, "https://tenant.c360a.salesforce.com")), \
+         patch.object(DataCloudTokenExchanger, '_revoke_core_token', return_value=None):
+            # Create connection via connect()
+            conn = sfdc.connect(
+                login_url="https://login.salesforce.com",
+                auth_type="jwt",
+                username="test@example.com",
+                client_id="test_client_id",
+                jwt_private_key="-----BEGIN PRIVATE KEY-----\ntest_key\n-----END PRIVATE KEY-----",
+                dataspace="test_ds",
+                workload="test_workload"
+            )
+
+            # Verify connection is created
+            assert conn is not None
+            assert isinstance(conn, sfdc.Connection)
+
+            # Verify the client has the correct tenant endpoint (from CDP exchange)
+            assert conn._client.tenant_endpoint == "https://tenant.c360a.salesforce.com"
+
+            # Verify token provider is DataCloudTokenExchanger
+            assert isinstance(conn._token_provider, DataCloudTokenExchanger)
+
+            conn.close()
+
+
+def test_connect_wires_client_credentials():
+    """Test that connect(auth_type='client_credentials') composes the client-credentials
+    authenticator → DataCloudTokenExchanger → Connection (GA go-forward path)."""
+    from unittest.mock import patch
+    import salesforce_datacloud_connector as sfdc
+    from salesforce_datacloud_connector.auth.token_exchanger import DataCloudTokenExchanger
+    from salesforce_datacloud_connector.auth.oauth import ClientCredentialsAuthenticator
+
+    # Mock the client-credentials authenticator's token fetch (no user/JWT needed).
+    # Patch _revoke_core_token too so no live HTTP call escapes during connect().
+    with patch.object(ClientCredentialsAuthenticator, '_fetch_new_token', return_value=("core_token", 7200, "https://test.salesforce.com")), \
+         patch.object(DataCloudTokenExchanger, '_exchange_token', return_value=("cdp_token", 7200, "https://tenant.c360a.salesforce.com")), \
+         patch.object(DataCloudTokenExchanger, '_revoke_core_token', return_value=None):
+            conn = sfdc.connect(
+                login_url="https://login.salesforce.com",
+                auth_type="client_credentials",
+                client_id="test_client_id",
+                client_secret="test_client_secret",
+                dataspace="test_ds",
+                workload="test_workload",
+            )
+
+            assert conn is not None
+            assert isinstance(conn, sfdc.Connection)
+            # Composed authenticator is the client-credentials flow
+            assert isinstance(conn._token_provider._core_authenticator, ClientCredentialsAuthenticator)
+            # Tenant endpoint flows through from the CDP exchange
+            assert conn._client.tenant_endpoint == "https://tenant.c360a.salesforce.com"
+            assert isinstance(conn._token_provider, DataCloudTokenExchanger)
+
+            conn.close()
+
+
+def test_connect_client_credentials_requires_secret():
+    """connect(auth_type='client_credentials') must reject missing client_secret."""
+    import pytest
+    import salesforce_datacloud_connector as sfdc
+
+    with pytest.raises(ValueError, match="client_credentials auth requires"):
+        sfdc.connect(
+            login_url="https://login.salesforce.com",
+            auth_type="client_credentials",
+            client_id="test_client_id",
+            # client_secret intentionally omitted
+        )

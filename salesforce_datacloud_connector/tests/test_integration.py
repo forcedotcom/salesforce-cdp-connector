@@ -24,6 +24,14 @@ def test_end_to_end_sync_query():
         status=200,
     )
 
+    # Mock CDP token exchange
+    responses.add(
+        responses.POST,
+        "https://myorg.my.salesforce.com/services/a360/token",
+        json={"access_token": "cdp_token", "expires_in": 7200, "instance_url": "https://myorg.my.salesforce.com"},
+        status=200,
+    )
+
     # Mock query execution
     status_header = {
         "queryId": "q1",
@@ -94,6 +102,14 @@ def test_end_to_end_with_context_managers():
         status=200,
     )
 
+    # Mock CDP token exchange
+    responses.add(
+        responses.POST,
+        "https://myorg.my.salesforce.com/services/a360/token",
+        json={"access_token": "cdp_token", "expires_in": 7200, "instance_url": "https://myorg.my.salesforce.com"},
+        status=200,
+    )
+
     # Mock query
     status_header = {
         "queryId": "q1",
@@ -140,6 +156,14 @@ def test_parameterized_query():
         responses.POST,
         "https://test.salesforce.com/services/oauth2/token",
         json={"access_token": "token123", "expires_in": 7200, "instance_url": "https://myorg.my.salesforce.com"},
+        status=200,
+    )
+
+    # Mock CDP token exchange
+    responses.add(
+        responses.POST,
+        "https://myorg.my.salesforce.com/services/a360/token",
+        json={"access_token": "cdp_token", "expires_in": 7200, "instance_url": "https://myorg.my.salesforce.com"},
         status=200,
     )
 
@@ -195,6 +219,14 @@ def test_large_result_set_with_pagination():
         responses.POST,
         "https://test.salesforce.com/services/oauth2/token",
         json={"access_token": "token123", "expires_in": 7200, "instance_url": "https://myorg.my.salesforce.com"},
+        status=200,
+    )
+
+    # Mock CDP token exchange
+    responses.add(
+        responses.POST,
+        "https://myorg.my.salesforce.com/services/a360/token",
+        json={"access_token": "cdp_token", "expires_in": 7200, "instance_url": "https://myorg.my.salesforce.com"},
         status=200,
     )
 
@@ -264,6 +296,14 @@ def test_async_query_with_polling():
         responses.POST,
         "https://test.salesforce.com/services/oauth2/token",
         json={"access_token": "token123", "expires_in": 7200, "instance_url": "https://myorg.my.salesforce.com"},
+        status=200,
+    )
+
+    # Mock CDP token exchange
+    responses.add(
+        responses.POST,
+        "https://myorg.my.salesforce.com/services/a360/token",
+        json={"access_token": "cdp_token", "expires_in": 7200, "instance_url": "https://myorg.my.salesforce.com"},
         status=200,
     )
 
@@ -347,6 +387,14 @@ def test_unsupported_dml_operations():
         status=200,
     )
 
+    # Mock CDP token exchange
+    responses.add(
+        responses.POST,
+        "https://myorg.my.salesforce.com/services/a360/token",
+        json={"access_token": "cdp_token", "expires_in": 7200, "instance_url": "https://myorg.my.salesforce.com"},
+        status=200,
+    )
+
     with sfdc.connect(
         login_url="https://test.salesforce.com",
         auth_type="username_password",
@@ -375,6 +423,14 @@ def test_sql_syntax_error():
         responses.POST,
         "https://test.salesforce.com/services/oauth2/token",
         json={"access_token": "token123", "expires_in": 7200, "instance_url": "https://myorg.my.salesforce.com"},
+        status=200,
+    )
+
+    # Mock CDP token exchange
+    responses.add(
+        responses.POST,
+        "https://myorg.my.salesforce.com/services/a360/token",
+        json={"access_token": "cdp_token", "expires_in": 7200, "instance_url": "https://myorg.my.salesforce.com"},
         status=200,
     )
 
@@ -408,6 +464,14 @@ def test_cursor_iteration():
         responses.POST,
         "https://test.salesforce.com/services/oauth2/token",
         json={"access_token": "token123", "expires_in": 7200, "instance_url": "https://myorg.my.salesforce.com"},
+        status=200,
+    )
+
+    # Mock CDP token exchange
+    responses.add(
+        responses.POST,
+        "https://myorg.my.salesforce.com/services/a360/token",
+        json={"access_token": "cdp_token", "expires_in": 7200, "instance_url": "https://myorg.my.salesforce.com"},
         status=200,
     )
 
@@ -495,6 +559,12 @@ def test_jwt_authentication():
         )
         rsps.add(
             responses.POST,
+            "https://myorg.my.salesforce.com/services/a360/token",
+            json={"access_token": "cdp_token", "expires_in": 7200, "instance_url": "https://myorg.my.salesforce.com"},
+            status=200,
+        )
+        rsps.add(
+            responses.POST,
             "https://myorg.my.salesforce.com/api/v3/query",
             json={
                 "metadata": {
@@ -540,6 +610,14 @@ def test_refresh_token_authentication():
             "token_type": "Bearer",
             "instance_url": "https://myorg.my.salesforce.com",
         },
+        status=200,
+    )
+
+    # Mock CDP token exchange
+    responses.add(
+        responses.POST,
+        "https://myorg.my.salesforce.com/services/a360/token",
+        json={"access_token": "cdp_token", "expires_in": 7200, "instance_url": "https://myorg.my.salesforce.com"},
         status=200,
     )
 
