@@ -394,3 +394,50 @@ def test_fetch_before_execute():
 
     with pytest.raises(InterfaceError):
         cursor.fetchmany(10)
+
+
+def test_fetch_df_returns_dataframe_when_pandas_present():
+    """R6: fetch_df() returns a pandas DataFrame built from the fetched rows + description."""
+    import pytest
+    pytest.importorskip("pandas")  # only run when the [pandas] extra is installed
+
+    from unittest.mock import Mock
+    from salesforce_datacloud_connector.cursor import Cursor
+
+    cursor = Cursor(Mock())
+    # Simulate an executed query with results:
+    # _check_query_executed() passes when _query_id is not None; _closed defaults to False.
+    cursor._query_id = "query123"
+    cursor._description = [("name", None, None, None, None, None, None),
+                           ("age", None, None, None, None, None, None)]
+    cursor.fetchall = Mock(return_value=[("Alice", 30), ("Bob", 25)])
+
+    df = cursor.fetch_df()
+
+    assert list(df.columns) == ["name", "age"]
+    assert len(df) == 2
+    assert df.iloc[0]["name"] == "Alice"
+
+
+def test_fetch_df_raises_clear_error_without_pandas():
+    """R6: fetch_df() raises an actionable ImportError when pandas is not installed."""
+    import builtins
+    import pytest
+    from unittest.mock import Mock, patch
+    from salesforce_datacloud_connector.cursor import Cursor
+
+    cursor = Cursor(Mock())
+    cursor._query_id = "query123"
+    cursor._description = [("name", None, None, None, None, None, None)]
+    cursor.fetchall = Mock(return_value=[("Alice",)])
+
+    real_import = builtins.__import__
+
+    def _no_pandas(name, *args, **kwargs):
+        if name == "pandas":
+            raise ImportError("No module named 'pandas'")
+        return real_import(name, *args, **kwargs)
+
+    with patch("builtins.__import__", side_effect=_no_pandas):
+        with pytest.raises(ImportError, match=r"salesforce-datacloud\[pandas\]"):
+            cursor.fetch_df()
