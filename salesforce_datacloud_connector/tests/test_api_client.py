@@ -8,6 +8,7 @@ import pytest
 import responses
 
 from salesforce_datacloud_connector.api.client import DataCloudQueryClient
+from salesforce_datacloud_connector.api.models import QueryStatus
 from salesforce_datacloud_connector.exceptions import OperationalError, ProgrammingError
 
 
@@ -719,3 +720,49 @@ def test_execute_query_missing_status_header_raises_operational_error():
 
     with pytest.raises(OperationalError, match="x-hyperdb-status"):
         client.execute_query("SELECT name FROM users")
+
+
+def test_query_status_from_dict_real_payload():
+    """Verbatim shape v3 emits in the x-hyperdb-status response header."""
+    status = QueryStatus.from_dict(
+        {
+            "queryId": "q1",
+            "completionStatus": "Finished",
+            "progress": 1.0,
+            "rowCount": 1288,
+            "chunkCount": 1,
+            "expirationTime": "2025-09-26T10:55:07.438Z",
+        }
+    )
+
+    assert status.query_id == "q1"
+    assert status.is_complete()
+    assert status.row_count == 1288
+    assert status.chunk_count == 1
+    assert status.progress == 1.0
+    assert status.expiration_time == "2025-09-26T10:55:07.438Z"
+
+
+def test_query_status_from_empty_dict_does_not_throw():
+    status = QueryStatus.from_dict({})
+    assert status.query_id == ""
+    assert status.completion_status == ""
+    assert status.progress == 0.0
+    assert status.row_count == 0
+    assert status.chunk_count == 0
+    assert status.expiration_time is None
+
+
+def test_query_status_unknown_keys_ignored():
+    """Forward-compat: extra fields the server may add later must not raise."""
+    status = QueryStatus.from_dict(
+        {
+            "queryId": "q1",
+            "completionStatus": "Finished",
+            "progress": 1.0,
+            "rowCount": 0,
+            "chunkCount": 0,
+            "newServerSideField": {"foo": "bar"},
+        }
+    )
+    assert status.is_complete()
