@@ -171,10 +171,36 @@ class DataCloudTokenExchanger:
             if not tenant_endpoint:
                 raise OperationalError("No instance_url in CDP token exchange response")
 
+            # The a360 exchange returns the tenant endpoint as a bare host
+            # (no scheme). On-core v1 prepends https:// at request time; we
+            # normalize once here so the off-core client can build valid URLs.
+            tenant_endpoint = self._normalize_endpoint(tenant_endpoint)
+
             return access_token, expires_in, tenant_endpoint
 
         except requests.exceptions.RequestException as e:
             raise OperationalError(f"CDP token exchange failed: {e}") from e
+
+    @staticmethod
+    def _normalize_endpoint(endpoint: str) -> str:
+        """
+        Ensure the tenant endpoint carries an explicit scheme.
+
+        The /services/a360/token response returns instance_url as a bare host
+        (e.g. "tenant.c360a.salesforce.com"). The off-core query client builds
+        request URLs by string concatenation, so a missing scheme makes requests
+        raise "No scheme supplied". Prepend https:// when absent; leave an
+        existing http:// or https:// untouched (idempotent).
+
+        Args:
+            endpoint: Tenant endpoint as returned by the exchange (with or without scheme)
+
+        Returns:
+            Endpoint guaranteed to start with a scheme
+        """
+        if endpoint.startswith(("https://", "http://")):
+            return endpoint
+        return f"https://{endpoint}"
 
     def _revoke_core_token(self, instance_url: str, core_token: str):
         """

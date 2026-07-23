@@ -500,6 +500,59 @@ def test_dataspace_omitted_if_none():
         assert "dataspace=" not in exchange_call.request.url
 
 
+def test_normalize_endpoint_prefixes_and_is_idempotent():
+    """Unit-level: bare host gets https://, existing scheme is preserved."""
+    norm = DataCloudTokenExchanger._normalize_endpoint
+    assert norm("tenant.c360a.salesforce.com") == "https://tenant.c360a.salesforce.com"
+    assert norm("https://tenant.c360a.salesforce.com") == "https://tenant.c360a.salesforce.com"
+    assert norm("http://tenant.c360a.salesforce.com") == "http://tenant.c360a.salesforce.com"
+
+
+@responses.activate
+def test_tenant_endpoint_schemeless_response_gets_https_prefix():
+    """Real orgs return the a360 instance_url as a bare host (no scheme). The
+    exchanger must normalize it to an https:// URL so the off-core query client
+    can build valid request URLs — mirrors on-core v1, which prepends https://
+    at request time. Regression for the live-run 'No scheme supplied' failure."""
+    responses.add(
+        responses.POST,
+        "https://test.salesforce.com/services/oauth2/token",
+        json={
+            "access_token": "core_token",
+            "expires_in": 7200,
+            "instance_url": "https://myorg.my.salesforce.com",
+        },
+        status=200,
+    )
+    # a360 returns a SCHEMELESS host, exactly as the live pc-rnd org does.
+    responses.add(
+        responses.POST,
+        "https://myorg.my.salesforce.com/services/a360/token",
+        json={
+            "access_token": "cdp_token",
+            "expires_in": 3600,
+            "instance_url": "tenant789.pc-rnd.c360a.salesforce.com",
+        },
+        status=200,
+    )
+    responses.add(
+        responses.POST,
+        "https://myorg.my.salesforce.com/services/oauth2/revoke",
+        status=200,
+    )
+
+    with patch("jwt.encode", return_value="mock_jwt"):
+        jwt_auth = JWTAuthenticator(
+            login_url="https://test.salesforce.com",
+            client_id="test_client_id",
+            username="test@example.com",
+            jwt_private_key="-----BEGIN RSA PRIVATE KEY-----\nfake\n-----END RSA PRIVATE KEY-----",
+        )
+        exchanger = DataCloudTokenExchanger(core_authenticator=jwt_auth, dataspace="default")
+
+        assert exchanger.get_tenant_endpoint() == "https://tenant789.pc-rnd.c360a.salesforce.com"
+
+
 def test_import_from_auth_module():
     """Test that DataCloudTokenExchanger can be imported from auth module."""
     from salesforce_datacloud_connector.auth import DataCloudTokenExchanger
