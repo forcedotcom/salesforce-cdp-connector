@@ -8,7 +8,7 @@ import pytest
 import responses
 
 from salesforce_datacloud_connector.api.client import DataCloudQueryClient
-from salesforce_datacloud_connector.exceptions import ProgrammingError
+from salesforce_datacloud_connector.exceptions import OperationalError, ProgrammingError
 
 
 def mock_token_getter():
@@ -560,3 +560,29 @@ def test_auth_token_included():
     )
 
     client.execute_query("SELECT 1")
+
+
+@responses.activate
+def test_execute_query_missing_status_header_raises_operational_error():
+    """A 200 response with no x-hyperdb-status header must raise a clear
+    OperationalError, not a downstream AttributeError (status lives only in
+    the header in v3)."""
+    responses.add(
+        responses.POST,
+        "https://test.c360a.salesforce.com/api/v3/query",
+        json={
+            "metadata": {"columns": [{"name": "name", "type": "varchar", "nullable": True}]},
+            "data": [["Alice"]],
+            "returnedRows": 1,
+        },
+        # NOTE: deliberately no x-hyperdb-status header
+        status=200,
+    )
+
+    client = DataCloudQueryClient(
+        tenant_endpoint="https://test.c360a.salesforce.com",
+        auth_token_getter=mock_token_getter,
+    )
+
+    with pytest.raises(OperationalError, match="x-hyperdb-status"):
+        client.execute_query("SELECT name FROM users")

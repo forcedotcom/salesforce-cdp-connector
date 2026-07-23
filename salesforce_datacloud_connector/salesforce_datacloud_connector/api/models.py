@@ -166,31 +166,3 @@ class QueryResponse:
             returned_rows=data.get("returnedRows", 0),
             status=status,
         )
-
-
-@dataclass
-class SqlParameter:
-    """
-    SQL parameter for parameterized queries.
-
-    Attributes:
-        name: Parameter name (without colon prefix)
-        value: Parameter value
-        type: Data Cloud type name
-    """
-    name: str
-    value: Any
-    type: str
-
-    def to_dict(self) -> dict:
-        """
-        Convert to API request dictionary format.
-
-        Returns:
-            Dictionary with name, value, and type
-        """
-        return {
-            "name": self.name,
-            "value": self.value,
-            "type": self.type,
-        }

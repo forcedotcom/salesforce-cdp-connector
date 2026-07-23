@@ -1,12 +1,12 @@
 """
-HTTP client for Salesforce Data Cloud Query API.
+HTTP client for Salesforce Data Cloud off-core Query v3 REST API.
 
-This module handles all REST API calls to the Query API endpoints:
-- Execute queries (createSqlQuery)
-- Check query status (getSqlQuery)
-- Fetch results (getSqlQueryRows)
-- Cancel queries (cancelSqlQuery)
-- Fetch table metadata (getTableMetadata)
+This module implements the v3 REST transport layer for the Query API:
+- execute_query: POST /api/v3/query
+- get_query_status: GET /api/v3/query/{id}
+- fetch_results: GET /api/v3/query/{id}/rows
+- cancel_query: DELETE /api/v3/query/{id}
+- poll_until_complete: blocking poll until a query completes
 """
 
 import time
@@ -215,12 +215,16 @@ class DataCloudQueryClient:
         body = response.json()
         query_response = QueryResponse.from_dict(body)
 
-        # Parse status from x-hyperdb-status header (v3)
+        # Parse status from x-hyperdb-status header (v3). The header carries the
+        # queryId/rowCount/completionStatus the cursor relies on; the body never
+        # contains status in v3, so a missing header is a hard error, not None.
         status_header = response.headers.get("x-hyperdb-status")
-        if status_header:
-            import json
-            status_data = json.loads(status_header)
-            query_response.status = QueryStatus.from_dict(status_data)
+        if not status_header:
+            raise OperationalError("Missing x-hyperdb-status header in query response")
+
+        import json
+        status_data = json.loads(status_header)
+        query_response.status = QueryStatus.from_dict(status_data)
 
         return query_response
 
