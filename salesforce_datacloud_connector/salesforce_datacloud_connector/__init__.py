@@ -189,7 +189,6 @@ def connect(
         )
 
     # Wrap authenticator in token exchanger for CDP token + tenant endpoint
-    from .auth.token_exchanger import DataCloudTokenExchanger
     exchanger = DataCloudTokenExchanger(
         core_authenticator=authenticator,
         dataspace=dataspace,

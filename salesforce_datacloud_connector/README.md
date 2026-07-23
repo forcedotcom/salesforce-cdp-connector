@@ -40,7 +40,7 @@ still in beta to allow for adjustments based on field feedback.
 ## Features
 
 - **DB-API 2.0 compliant** — standard Python database interface.
-- **Three OAuth flows** — Username/Password, JWT Bearer Token, Refresh Token.
+- **Four OAuth flows** — JWT Bearer Token, Refresh Token, Client Credentials, Username/Password.
 - **Pandas integration** — works with `pandas.read_sql()` and
   `cursor.fetch_df()` (under the `[pandas]` extra).
 - **Notebook-ready** — interactive exploration and visualization in Jupyter.
@@ -119,7 +119,7 @@ with sfdc.connect(...) as conn:
 
 ## Authentication
 
-The connector ships three OAuth flows, all driven through `sfdc.connect(...)`
+The connector ships four OAuth flows, all driven through `sfdc.connect(...)`
 via the `auth_type` keyword.
 
 ### JWT Bearer Token (recommended)
@@ -162,6 +162,26 @@ conn = sfdc.connect(
     client_id=os.environ["SFDC_CLIENT_ID"],
     client_secret=os.environ["SFDC_CLIENT_SECRET"],
     refresh_token=os.environ["SFDC_REFRESH_TOKEN"],
+)
+```
+
+### Client Credentials
+
+Client Credentials is a server-to-server flow with no user context — the
+connected app itself is the principal. It requires only a client ID and
+secret, and the connected app must be configured to allow the client
+credentials flow.
+
+```python
+import os
+
+import salesforce_datacloud_connector as sfdc
+
+conn = sfdc.connect(
+    login_url="https://login.salesforce.com",
+    auth_type="client_credentials",
+    client_id=os.environ["SFDC_CLIENT_ID"],
+    client_secret=os.environ["SFDC_CLIENT_SECRET"],
 )
 ```
 

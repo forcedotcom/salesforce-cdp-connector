@@ -11,7 +11,7 @@ from salesforce_datacloud_connector.cursor import Cursor
 from salesforce_datacloud_connector.exceptions import InterfaceError
 
 
-def create_mock_authenticator():
+def create_mock_token_provider():
     """Create a mock token provider for testing."""
     provider = Mock()
     provider.get_tenant_endpoint.return_value = "https://test.c360a.salesforce.com"
@@ -21,7 +21,7 @@ def create_mock_authenticator():
 
 def test_connection_initialization():
     """Test connection initialization."""
-    auth = create_mock_authenticator()
+    auth = create_mock_token_provider()
     conn = Connection(auth, dataspace="test_space", workload="test_workload")
 
     assert not conn.closed
@@ -31,7 +31,7 @@ def test_connection_initialization():
 
 def test_create_cursor():
     """Test creating a cursor from connection."""
-    auth = create_mock_authenticator()
+    auth = create_mock_token_provider()
     conn = Connection(auth)
 
     cursor = conn.cursor()
@@ -42,7 +42,7 @@ def test_create_cursor():
 
 def test_create_multiple_cursors():
     """Test creating multiple cursors from same connection."""
-    auth = create_mock_authenticator()
+    auth = create_mock_token_provider()
     conn = Connection(auth)
 
     cursor1 = conn.cursor()
@@ -55,7 +55,7 @@ def test_create_multiple_cursors():
 
 def test_close_connection():
     """Test closing a connection."""
-    auth = create_mock_authenticator()
+    auth = create_mock_token_provider()
     conn = Connection(auth)
 
     assert not conn.closed
@@ -67,7 +67,7 @@ def test_close_connection():
 
 def test_operations_after_close():
     """Test that operations fail after connection is closed."""
-    auth = create_mock_authenticator()
+    auth = create_mock_token_provider()
     conn = Connection(auth)
 
     conn.close()
@@ -84,7 +84,7 @@ def test_operations_after_close():
 
 def test_commit_noop():
     """Test that commit() is a no-op for read-only driver."""
-    auth = create_mock_authenticator()
+    auth = create_mock_token_provider()
     conn = Connection(auth)
 
     # Should not raise
@@ -93,7 +93,7 @@ def test_commit_noop():
 
 def test_rollback_noop():
     """Test that rollback() is a no-op for read-only driver."""
-    auth = create_mock_authenticator()
+    auth = create_mock_token_provider()
     conn = Connection(auth)
 
     # Should not raise
@@ -102,7 +102,7 @@ def test_rollback_noop():
 
 def test_context_manager():
     """Test connection as context manager."""
-    auth = create_mock_authenticator()
+    auth = create_mock_token_provider()
 
     with Connection(auth) as conn:
         assert not conn.closed
@@ -115,7 +115,7 @@ def test_context_manager():
 
 def test_context_manager_with_exception():
     """Test that connection is closed even if exception occurs."""
-    auth = create_mock_authenticator()
+    auth = create_mock_token_provider()
 
     try:
         with Connection(auth) as conn:
@@ -129,7 +129,7 @@ def test_context_manager_with_exception():
 
 def test_multiple_close_calls():
     """Test that multiple close() calls are safe."""
-    auth = create_mock_authenticator()
+    auth = create_mock_token_provider()
     conn = Connection(auth)
 
     conn.close()
@@ -142,7 +142,7 @@ def test_multiple_close_calls():
 
 def test_dataspace_property():
     """Test dataspace property."""
-    auth = create_mock_authenticator()
+    auth = create_mock_token_provider()
     conn = Connection(auth, dataspace="custom_space")
 
     assert conn.dataspace == "custom_space"
@@ -150,7 +150,7 @@ def test_dataspace_property():
 
 def test_workload_property():
     """Test workload property."""
-    auth = create_mock_authenticator()
+    auth = create_mock_token_provider()
     conn = Connection(auth, workload="my_app")
 
     assert conn.workload == "my_app"
@@ -158,7 +158,7 @@ def test_workload_property():
 
 def test_default_dataspace():
     """Test default dataspace is None (server applies the org default)."""
-    auth = create_mock_authenticator()
+    auth = create_mock_token_provider()
     conn = Connection(auth)
 
     # When no dataspace is supplied the connector forwards None to the API
@@ -168,7 +168,7 @@ def test_default_dataspace():
 
 def test_no_workload_by_default():
     """Test that workload is None by default."""
-    auth = create_mock_authenticator()
+    auth = create_mock_token_provider()
     conn = Connection(auth)
 
     assert conn.workload is None
