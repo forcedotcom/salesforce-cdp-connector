@@ -159,6 +159,139 @@ def test_execute_query_with_parameters_v3():
 
 
 @responses.activate
+def test_named_parameters_translated_to_qmark_v3():
+    """The driver advertises paramstyle='named', but v3 accepts only positional
+    (qmark) parameters. A :name placeholder in the SQL must be rewritten to ?
+    and its value emitted positionally, or the server rejects the query with
+    "conflicting parameter style 'named' ... set to 'qmark'"."""
+    def check_request(request):
+        body = json.loads(request.body.decode("utf-8"))
+        assert body["sql"] == "SELECT ? AS msg"
+        assert body["parameters"] == [{"type": "varchar", "value": "hi there"}]
+
+        status_header = {
+            "queryId": "q1", "completionStatus": "RESULTS_PRODUCED",
+            "progress": 1.0, "rowCount": 0, "chunkCount": 0,
+        }
+        return (200, {"x-hyperdb-status": json.dumps(status_header)},
+                json.dumps({"metadata": {"columns": []}, "data": [], "returnedRows": 0}))
+
+    responses.add_callback(
+        responses.POST,
+        "https://test.c360a.salesforce.com/api/v3/query",
+        callback=check_request,
+    )
+
+    client = DataCloudQueryClient(
+        tenant_endpoint="https://test.c360a.salesforce.com",
+        auth_token_getter=mock_token_getter,
+    )
+    client.execute_query("SELECT :greeting AS msg", parameters={"greeting": "hi there"})
+
+
+@responses.activate
+def test_named_parameter_reuse_translated_positionally_v3():
+    """A named parameter used more than once expands to one positional ? per
+    occurrence, with the value repeated in the parameters array."""
+    def check_request(request):
+        body = json.loads(request.body.decode("utf-8"))
+        assert body["sql"] == "SELECT ? AS a, ? + 1 AS b"
+        assert body["parameters"] == [
+            {"type": "numeric", "value": 7},
+            {"type": "numeric", "value": 7},
+        ]
+
+        status_header = {
+            "queryId": "q1", "completionStatus": "RESULTS_PRODUCED",
+            "progress": 1.0, "rowCount": 0, "chunkCount": 0,
+        }
+        return (200, {"x-hyperdb-status": json.dumps(status_header)},
+                json.dumps({"metadata": {"columns": []}, "data": [], "returnedRows": 0}))
+
+    responses.add_callback(
+        responses.POST,
+        "https://test.c360a.salesforce.com/api/v3/query",
+        callback=check_request,
+    )
+
+    client = DataCloudQueryClient(
+        tenant_endpoint="https://test.c360a.salesforce.com",
+        auth_token_getter=mock_token_getter,
+    )
+    client.execute_query("SELECT :n AS a, :n + 1 AS b", parameters={"n": 7})
+
+
+@responses.activate
+def test_qmark_sql_passes_through_unchanged_v3():
+    """SQL that already uses positional ? placeholders (e.g. internal catalog
+    queries) has no :name tokens: the SQL is left untouched and the parameter
+    array is built from the dict's insertion order."""
+    def check_request(request):
+        body = json.loads(request.body.decode("utf-8"))
+        assert body["sql"] == "SELECT * FROM t WHERE a = ? AND b = ?"
+        assert body["parameters"] == [
+            {"type": "varchar", "value": "x"},
+            {"type": "varchar", "value": "y"},
+        ]
+
+        status_header = {
+            "queryId": "q1", "completionStatus": "RESULTS_PRODUCED",
+            "progress": 1.0, "rowCount": 0, "chunkCount": 0,
+        }
+        return (200, {"x-hyperdb-status": json.dumps(status_header)},
+                json.dumps({"metadata": {"columns": []}, "data": [], "returnedRows": 0}))
+
+    responses.add_callback(
+        responses.POST,
+        "https://test.c360a.salesforce.com/api/v3/query",
+        callback=check_request,
+    )
+
+    client = DataCloudQueryClient(
+        tenant_endpoint="https://test.c360a.salesforce.com",
+        auth_token_getter=mock_token_getter,
+    )
+    # dict order (a then b) defines positional order for qmark SQL
+    client.execute_query(
+        "SELECT * FROM t WHERE a = ? AND b = ?",
+        parameters={"a": "x", "b": "y"},
+    )
+
+
+@responses.activate
+def test_named_translation_leaves_type_casts_alone_v3():
+    """Postgres :: type casts must not be mistaken for :name placeholders when
+    translating. Only the genuine :name (present in params) is rewritten."""
+    def check_request(request):
+        body = json.loads(request.body.decode("utf-8"))
+        # ::regclass cast preserved; :kind rewritten to ?
+        assert body["sql"] == "SELECT 'x'::regclass WHERE relkind = ?"
+        assert body["parameters"] == [{"type": "varchar", "value": "r"}]
+
+        status_header = {
+            "queryId": "q1", "completionStatus": "RESULTS_PRODUCED",
+            "progress": 1.0, "rowCount": 0, "chunkCount": 0,
+        }
+        return (200, {"x-hyperdb-status": json.dumps(status_header)},
+                json.dumps({"metadata": {"columns": []}, "data": [], "returnedRows": 0}))
+
+    responses.add_callback(
+        responses.POST,
+        "https://test.c360a.salesforce.com/api/v3/query",
+        callback=check_request,
+    )
+
+    client = DataCloudQueryClient(
+        tenant_endpoint="https://test.c360a.salesforce.com",
+        auth_token_getter=mock_token_getter,
+    )
+    client.execute_query(
+        "SELECT 'x'::regclass WHERE relkind = :kind",
+        parameters={"kind": "r"},
+    )
+
+
+@responses.activate
 def test_get_query_status_v3():
     """Test getting query status (v3 API)."""
     status_header = {

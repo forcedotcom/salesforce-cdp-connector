@@ -143,7 +143,9 @@ class Cursor:
         Execute a SQL query.
 
         Args:
-            operation: SQL query string (may contain :param placeholders)
+            operation: SQL query string. May contain :name placeholders
+                (paramstyle="named"); these are rewritten to v3 positional
+                parameters before the request is sent.
             parameters: Named parameters dict (e.g., {"param": "value"})
 
         Returns:

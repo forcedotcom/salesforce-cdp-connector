@@ -9,14 +9,21 @@ This module implements the v3 REST transport layer for the Query API:
 - poll_until_complete: blocking poll until a query completes
 """
 
+import re
 import time
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 import requests
 
-from ..exceptions import OperationalError, map_http_error_to_exception
+from ..exceptions import OperationalError, ProgrammingError, map_http_error_to_exception
 from ..types import infer_sql_parameter_type
 from .models import QueryResponse, QueryStatus
+
+# Matches a :name placeholder while ignoring PostgreSQL ::type casts. The
+# negative lookbehind (?<![:\w]) rejects the second colon of "::" and any
+# colon glued to an identifier, so "value::regclass" is left untouched but
+# "= :kind" is captured.
+_NAMED_PARAM_RE = re.compile(r"(?<![:\w]):(\w+)")
 
 
 class DataCloudQueryClient:
@@ -152,31 +159,60 @@ class DataCloudQueryClient:
         )
         raise exception
 
-    def _convert_parameters(self, params: Optional[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        """
-        Convert Python dict parameters to v3 parameters array format.
+    @staticmethod
+    def _param_entry(value: Any) -> Dict[str, Any]:
+        """Build one v3 parameter entry: {"type": <lowercase>, "value": ...}."""
+        return {"type": infer_sql_parameter_type(value).lower(), "value": value}
 
-        V3 uses positional parameters (question-mark style), so only type and value are sent.
+    def _bind_parameters(
+        self, sql: str, params: Optional[Dict[str, Any]]
+    ) -> Tuple[str, List[Dict[str, Any]]]:
+        """
+        Prepare SQL and parameters for v3, which accepts only positional
+        (question-mark) parameters.
+
+        The driver advertises paramstyle="named", so callers write :name
+        placeholders with a values dict. v3 rejects named placeholders
+        ("conflicting parameter style 'named' ... set to 'qmark'"), so each
+        :name is rewritten to ? and its value emitted positionally in the order
+        the placeholders appear in the SQL. A name used N times expands to N
+        question marks and N repeated values.
+
+        SQL that already uses ? placeholders (e.g. internal catalog queries)
+        contains no :name tokens: it is passed through unchanged and the value
+        array is built from the dict's insertion order.
 
         Args:
-            params: Dictionary of named parameters (names ignored in v3)
+            sql: Query text with :name and/or ? placeholders
+            params: Values dict (names match the :name placeholders)
 
         Returns:
-            List of parameter dictionaries in v3 API format: [{"type": "varchar", "value": "..."}]
+            (sql_with_qmarks, positional_parameter_array)
+
+        Raises:
+            ProgrammingError: If the SQL references a :name absent from params
         """
         if not params:
-            return []
+            return sql, []
 
-        sql_params = []
-        for name, value in params.items():
-            param_type = infer_sql_parameter_type(value)
-            # V3 parameter format: {"type": "varchar", "value": "..."} (lowercase type)
-            sql_params.append({
-                "type": param_type.lower(),
-                "value": value,
-            })
+        # No :name placeholders → qmark-style SQL: positional array from dict order.
+        if not _NAMED_PARAM_RE.search(sql):
+            return sql, [self._param_entry(v) for v in params.values()]
 
-        return sql_params
+        sql_params: List[Dict[str, Any]] = []
+
+        def _replace(match: "re.Match") -> str:
+            name = match.group(1)
+            if name not in params:
+                raise ProgrammingError(
+                    f"No value supplied for named parameter ':{name}'"
+                )
+            sql_params.append(self._param_entry(params[name]))
+            return "?"
+
+        # re.sub invokes _replace left-to-right, so sql_params ends up in SQL order.
+        new_sql = _NAMED_PARAM_RE.sub(_replace, sql)
+        return new_sql, sql_params
 
     def execute_query(
         self,
@@ -199,15 +235,18 @@ class DataCloudQueryClient:
             ProgrammingError: For SQL syntax errors (400)
             OperationalError: For auth/network failures (401, 403, 500+)
         """
+        # v3 accepts only positional (qmark) parameters; rewrite any :name
+        # placeholders and build the positional array in SQL order.
+        sql, sql_params = self._bind_parameters(sql, parameters)
+
         request_body = {
             "sql": sql,
             "transferMode": "ADAPTIVE",
             "queryRowLimit": row_limit,
         }
 
-        # Add parameters if provided (v3 uses positional parameters)
-        if parameters:
-            request_body["parameters"] = self._convert_parameters(parameters)
+        if sql_params:
+            request_body["parameters"] = sql_params
 
         response = self._make_request("POST", self._base_url, json_data=request_body)
 
