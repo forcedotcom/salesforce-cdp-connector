@@ -20,8 +20,6 @@ updates:
       - "dependencies"
       - "v1-deprecated"
       - "automated"
-    reviewers:
-      - "salesforce/data-cloud-connectors"
     groups:
       v1-minor-and-patch:
         patterns:
@@ -49,8 +47,6 @@ updates:
       - "dependencies"
       - "v2"
       - "automated"
-    reviewers:
-      - "salesforce/data-cloud-connectors"
     groups:
       v2-minor-and-patch:
         patterns:
