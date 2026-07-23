@@ -237,4 +237,4 @@ __all__ = [
 ]
 
 # Package metadata
-__version__ = "0.1.0"
+__version__ = "2.0.0b2"
