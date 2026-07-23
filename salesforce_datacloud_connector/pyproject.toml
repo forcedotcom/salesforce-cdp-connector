@@ -24,6 +24,7 @@ pandas = ["pandas>=2.0.0", "pyarrow>=14.0.0"]
 dev = [
     "pytest>=7.4.0",
     "pytest-cov>=4.1.0",
+    "pyyaml>=6.0.0",
     "responses>=0.23.0",
     "ruff>=0.1.0",
     "tomli>=2.0.0; python_version<'3.11'",
