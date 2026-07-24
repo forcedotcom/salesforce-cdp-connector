@@ -25,6 +25,7 @@ class Connection:
         token_provider,  # Type: DataCloudTokenExchanger (import avoided for circular dep)
         dataspace: Optional[str] = None,
         workload: Optional[str] = None,
+        user_agent: Optional[str] = None,
     ):
         """
         Initialize connection.
@@ -33,12 +34,15 @@ class Connection:
             token_provider: DataCloudTokenExchanger instance (wraps core authenticator)
             dataspace: Data space name (default: "default")
             workload: Optional workload name for logging/debugging
+            user_agent: Optional caller identifier appended to the driver's
+                User-Agent header (e.g. "my-app/1.0")
 
         Note: Use the connect() factory function instead of instantiating directly.
         """
         self._token_provider = token_provider
         self._dataspace = dataspace
         self._workload = workload
+        self._user_agent = user_agent
         self._closed = False
 
         # Create API client with v3 parameters
@@ -47,6 +51,7 @@ class Connection:
             auth_token_getter=token_provider.get_cdp_token,
             dataspace=dataspace,
             workload=workload,
+            user_agent=user_agent,
         )
 
     def _check_closed(self):
@@ -205,6 +210,11 @@ class Connection:
     def workload(self) -> Optional[str]:
         """Get the configured workload name."""
         return self._workload
+
+    @property
+    def user_agent(self) -> Optional[str]:
+        """Get the configured caller User-Agent identifier."""
+        return self._user_agent
 
     @property
     def closed(self) -> bool:

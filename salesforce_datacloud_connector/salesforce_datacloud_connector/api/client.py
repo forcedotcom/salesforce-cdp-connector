@@ -47,6 +47,7 @@ class DataCloudQueryClient:
         auth_token_getter: callable,
         dataspace: Optional[str] = None,
         workload: Optional[str] = None,
+        user_agent: Optional[str] = None,
     ):
         """
         Initialize the API client for off-core Query v3.
@@ -56,12 +57,34 @@ class DataCloudQueryClient:
             auth_token_getter: Callable that returns a valid CDP token
             dataspace: Data space name (default: "default")
             workload: Optional workload name for observability
+            user_agent: Optional caller identifier appended to the driver's own
+                User-Agent token (e.g. "my-app/1.0")
         """
         self.tenant_endpoint = tenant_endpoint.rstrip("/")
         self.auth_token_getter = auth_token_getter
         self.dataspace = dataspace or "default"
         self.workload = workload
+        self.user_agent = user_agent
         self._base_url = f"{self.tenant_endpoint}/api/v3/query"
+
+    def _build_user_agent(self) -> str:
+        """
+        Build the User-Agent header value.
+
+        Format: "salesforce-cdp-connector/{version}", optionally followed by a
+        space and the caller-supplied user_agent (e.g. "my-app/1.0"), matching
+        the JDBC driver's "salesforce-datacloud-jdbc/{version}" convention. The
+        product token is the literal driver name (stable across the PyPI
+        rename), not the package name.
+        """
+        # Local import avoids a circular import: the package __init__ imports
+        # this module (via connection.py) while defining __version__.
+        from .. import __version__
+
+        user_agent = f"salesforce-cdp-connector/{__version__}"
+        if self.user_agent and self.user_agent.strip():
+            user_agent = f"{user_agent} {self.user_agent.strip()}"
+        return user_agent
 
     def _get_headers(self) -> Dict[str, str]:
         """Get headers for v3 API requests."""
@@ -70,6 +93,7 @@ class DataCloudQueryClient:
             "Authorization": f"Bearer {token}",
             "Content-Type": "application/json",
             "Accept": "application/json",
+            "User-Agent": self._build_user_agent(),
             "ctx-dataspace-ds_name": self.dataspace,
         }
 
