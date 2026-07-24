@@ -449,45 +449,6 @@ and `pytest -m "not e2e"` locally.
 See [`CONTRIBUTING.md`](../CONTRIBUTING.md) at the repo root for the full
 contribution guide.
 
-## Demo
-
-An interactive Jupyter notebook demo (`demo.ipynb`) is available in the
-companion `sfdc-connector-sample` harness — a standalone project that installs
-this connector and exercises it against a live Data Cloud org.
-
-**To run the demo:**
-
-1. Obtain the `sfdc-connector-sample` harness and change into it.
-
-2. Set up your environment (copy `.env.example` to `.env` and fill in your
-   credentials — the harness authenticates with the `username_password` flow by
-   default; JWT bearer token is the recommended production flow):
-
-   ```bash
-   cp .env.example .env
-   # Edit .env with your credentials
-   uv sync
-   ```
-
-3. Launch Jupyter and open `demo.ipynb`:
-
-   ```bash
-   uv run jupyter notebook demo.ipynb
-   ```
-
-The notebook demonstrates:
-- Connecting to a live Data Cloud org
-- Basic queries (`SELECT`, `COUNT`, `WHERE`, `GROUP BY`, `ORDER BY`)
-- Fetch methods (`fetchone`, `fetchmany`, `fetchall`, iteration)
-- Pandas integration (`cursor.fetch_df()`, `pandas.read_sql()`)
-- Type mapping and cursor metadata
-- Error handling
-
-Regardless of the core auth flow, queries run against the off-core Query v3
-REST API, so the demo validates the full off-core path. Many of the sample
-tests use synthetic queries (`generate_series`) that work on any Data Cloud org
-without requiring specific tables or data.
-
 ## License
 
 BSD-3-Clause. See [`LICENSE.txt`](../LICENSE.txt) at the repo root.
