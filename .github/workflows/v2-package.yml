@@ -3,14 +3,8 @@ name: v2 Package - test and lint
 on:
   push:
     branches: [master]
-    paths:
-      - 'salesforce_datacloud_connector/**'
-      - '.github/workflows/v2-package.yml'
   pull_request:
     branches: [master]
-    paths:
-      - 'salesforce_datacloud_connector/**'
-      - '.github/workflows/v2-package.yml'
 
 jobs:
   test:
