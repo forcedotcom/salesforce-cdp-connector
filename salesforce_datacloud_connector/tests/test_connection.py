@@ -174,6 +174,25 @@ def test_no_workload_by_default():
     assert conn.workload is None
 
 
+def test_user_agent_flows_to_client():
+    """A user_agent passed to Connection is forwarded to the API client so it
+    can be appended to the driver's User-Agent header."""
+    auth = create_mock_token_provider()
+    conn = Connection(auth, user_agent="my-app/1.0")
+
+    assert conn.user_agent == "my-app/1.0"
+    assert conn._client.user_agent == "my-app/1.0"
+
+
+def test_no_user_agent_by_default():
+    """Test that user_agent is None by default."""
+    auth = create_mock_token_provider()
+    conn = Connection(auth)
+
+    assert conn.user_agent is None
+    assert conn._client.user_agent is None
+
+
 def test_connect_wires_token_exchanger():
     """Test that connect() creates DataCloudTokenExchanger and passes it to Connection."""
     from unittest.mock import patch
@@ -239,6 +258,31 @@ def test_connect_wires_client_credentials():
             # Tenant endpoint flows through from the CDP exchange
             assert conn._client.tenant_endpoint == "https://tenant.c360a.salesforce.com"
             assert isinstance(conn._token_provider, DataCloudTokenExchanger)
+
+            conn.close()
+
+
+def test_connect_wires_user_agent():
+    """connect(user_agent=...) flows the caller identifier all the way to the
+    API client."""
+    from unittest.mock import patch
+    import salesforce_datacloud_connector as sfdc
+    from salesforce_datacloud_connector.auth.token_exchanger import DataCloudTokenExchanger
+    from salesforce_datacloud_connector.auth.oauth import ClientCredentialsAuthenticator
+
+    with patch.object(ClientCredentialsAuthenticator, '_fetch_new_token', return_value=("core_token", 7200, "https://test.salesforce.com")), \
+         patch.object(DataCloudTokenExchanger, '_exchange_token', return_value=("cdp_token", 7200, "https://tenant.c360a.salesforce.com")), \
+         patch.object(DataCloudTokenExchanger, '_revoke_core_token', return_value=None):
+            conn = sfdc.connect(
+                login_url="https://login.salesforce.com",
+                auth_type="client_credentials",
+                client_id="test_client_id",
+                client_secret="test_client_secret",
+                user_agent="my-app/1.0",
+            )
+
+            assert conn.user_agent == "my-app/1.0"
+            assert conn._client.user_agent == "my-app/1.0"
 
             conn.close()
 

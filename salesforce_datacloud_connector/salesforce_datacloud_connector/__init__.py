@@ -81,6 +81,7 @@ def connect(
     refresh_token: Optional[str] = None,
     dataspace: Optional[str] = None,
     workload: Optional[str] = None,
+    user_agent: Optional[str] = None,
 ) -> Connection:
     """
     Create a connection to Salesforce Data Cloud.
@@ -101,6 +102,9 @@ def connect(
         refresh_token: OAuth refresh token (required for refresh_token)
         dataspace: Data space name (default: "default")
         workload: Optional workload name for logging/debugging
+        user_agent: Optional caller identifier appended to the driver's
+                    User-Agent header (e.g. "my-app/1.0"). The header sent is
+                    "salesforce-cdp-connector/{version} {user_agent}".
 
     Returns:
         Connection instance
@@ -198,7 +202,9 @@ def connect(
     )
 
     # Create and return connection with exchanger
-    return Connection(exchanger, dataspace=dataspace, workload=workload)
+    return Connection(
+        exchanger, dataspace=dataspace, workload=workload, user_agent=user_agent
+    )
 
 
 # Public API
