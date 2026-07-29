@@ -1,0 +1,78 @@
+version: 2
+
+# Dependabot for salesforce-datacloud-connector (v1 + v2 dual-tree structure)
+# - v1 (deprecated): Root directory, maintenance-only, majors ignored
+# - v2 (active): salesforce_datacloud_connector subdirectory, full updates
+# - GitHub Actions: Workflow dependency updates
+
+updates:
+  # V1 Python dependencies (deprecated, root directory)
+  - package-ecosystem: "pip"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+    commit-message:
+      prefix: "deps(v1):"
+      include: "scope"
+    labels:
+      - "dependencies"
+      - "v1-deprecated"
+      - "automated"
+    groups:
+      v1-minor-and-patch:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
+    ignore:
+      # V1 is deprecated - ignore all major version updates
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
+    open-pull-requests-limit: 5
+
+  # V2 Python dependencies (active, subdirectory)
+  - package-ecosystem: "pip"
+    directory: "/salesforce_datacloud_connector"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+    commit-message:
+      prefix: "deps(v2):"
+      include: "scope"
+    labels:
+      - "dependencies"
+      - "v2"
+      - "automated"
+    groups:
+      v2-minor-and-patch:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
+    # Allow major updates for v2 (do not ignore them)
+    open-pull-requests-limit: 10
+
+  # GitHub Actions dependencies
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+    commit-message:
+      prefix: "deps(actions):"
+      include: "scope"
+    labels:
+      - "dependencies"
+      - "github-actions"
+      - "automated"
+    groups:
+      github-actions-updates:
+        patterns:
+          - "*"
+    open-pull-requests-limit: 5

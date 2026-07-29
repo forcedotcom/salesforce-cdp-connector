@@ -58,6 +58,13 @@ DATACLOUD_TYPE_TO_DBAPI = {
 }
 
 
+# Case-insensitive index derived from the canonical map above. The off-core Query v3
+# API returns lowercase type names (e.g. "varchar", "timestamptz"), while the Postgres
+# metadata catalog (_metadata_pg.py) emits the canonical capitalized names. Normalizing
+# the lookup key lets both resolve to the same DB-API type object.
+_DATACLOUD_TYPE_TO_DBAPI_LOWER = {key.lower(): value for key, value in DATACLOUD_TYPE_TO_DBAPI.items()}
+
+
 def convert_datacloud_value(value: Any, datacloud_type: str,
                            precision: Optional[int] = None,
                            scale: Optional[int] = None) -> Any:
@@ -80,13 +87,17 @@ def convert_datacloud_value(value: Any, datacloud_type: str,
     if value is None:
         return None
 
+    # v3 returns lowercase type names; the PG catalog emits capitalized ones.
+    # Normalize so both resolve. `or ""` guards against a missing/None type.
+    normalized_type = (datacloud_type or "").lower()
+
     try:
         # Varchar → str
-        if datacloud_type == "Varchar":
+        if normalized_type == "varchar":
             return str(value)
 
         # Numeric → Decimal/int/float
-        elif datacloud_type == "Numeric":
+        elif normalized_type == "numeric":
             # If scale is 0, return as int
             if scale == 0:
                 return int(value)
@@ -98,22 +109,22 @@ def convert_datacloud_value(value: Any, datacloud_type: str,
                 return Decimal(str(value))
 
         # Integer types → int
-        elif datacloud_type in ("Integer", "BigInt"):
+        elif normalized_type in ("integer", "bigint"):
             return int(value)
 
         # Float types → float
-        elif datacloud_type in ("Float", "Double"):
+        elif normalized_type in ("float", "double"):
             return float(value)
 
         # TimestampTZ → datetime with timezone
-        elif datacloud_type == "TimestampTZ":
+        elif normalized_type == "timestamptz":
             if isinstance(value, datetime):
                 return value
             # Parse string timestamp
             return dateutil_parser.parse(value)
 
         # Date → date
-        elif datacloud_type == "Date":
+        elif normalized_type == "date":
             if isinstance(value, date):
                 return value
             # Parse string date
@@ -121,7 +132,7 @@ def convert_datacloud_value(value: Any, datacloud_type: str,
             return dt.date()
 
         # Boolean → bool
-        elif datacloud_type == "Boolean":
+        elif normalized_type == "boolean":
             if isinstance(value, bool):
                 return value
             # Handle string representations
@@ -130,7 +141,7 @@ def convert_datacloud_value(value: Any, datacloud_type: str,
             return bool(value)
 
         # Text → str
-        elif datacloud_type == "Text":
+        elif normalized_type == "text":
             return str(value)
 
         # Unknown type - return as-is
@@ -195,8 +206,8 @@ def build_description_tuple(column_metadata: dict) -> tuple:
     precision = column_metadata.get("precision")
     scale = column_metadata.get("scale")
 
-    # Get DB-API type code
-    type_code = DATACLOUD_TYPE_TO_DBAPI.get(datacloud_type, STRING)
+    # Get DB-API type code (case-insensitive: v3 lowercase + PG-catalog capitalized)
+    type_code = _DATACLOUD_TYPE_TO_DBAPI_LOWER.get((datacloud_type or "").lower(), STRING)
 
     # display_size and internal_size are often None in DB-API implementations
     display_size = None

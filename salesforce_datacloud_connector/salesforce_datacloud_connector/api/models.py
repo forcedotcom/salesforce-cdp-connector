@@ -34,14 +34,20 @@ class QueryStatus:
         Create QueryStatus from API response dictionary.
 
         Args:
-            data: Status dictionary from API response
+            data: Status dictionary from API response (v3: from x-hyperdb-status header)
 
         Returns:
             QueryStatus instance
         """
+        completion_status = data.get("completionStatus", "")
+
+        # Normalize v3 enum: RUNNING_OR_UNSPECIFIED → RUNNING
+        if completion_status.upper() == "RUNNING_OR_UNSPECIFIED":
+            completion_status = "RUNNING"
+
         return cls(
             query_id=data.get("queryId", ""),
-            completion_status=data.get("completionStatus", ""),
+            completion_status=completion_status,
             progress=data.get("progress", 0.0),
             row_count=data.get("rowCount", 0),
             chunk_count=data.get("chunkCount", 0),
@@ -132,18 +138,24 @@ class QueryResponse:
         Create QueryResponse from API response dictionary.
 
         Args:
-            data: Response dictionary from API
+            data: Response dictionary from API (v3: metadata.columns wrapper)
 
         Returns:
             QueryResponse instance
         """
-        # Parse metadata
-        metadata = [
-            ColumnMetadata.from_dict(col)
-            for col in data.get("metadata", [])
-        ]
+        # V3 wraps columns in metadata.columns, v2 had flat metadata array
+        metadata_raw = data.get("metadata", {})
+        if isinstance(metadata_raw, dict):
+            # V3 shape: {"metadata": {"columns": [...]}}
+            columns = metadata_raw.get("columns", [])
+        else:
+            # V2 shape: {"metadata": [...]}
+            columns = metadata_raw
 
-        # Parse status if present
+        # Parse metadata
+        metadata = [ColumnMetadata.from_dict(col) for col in columns]
+
+        # Parse status if present (not in fetch_results responses)
         status = None
         if "status" in data:
             status = QueryStatus.from_dict(data["status"])
@@ -154,31 +166,3 @@ class QueryResponse:
             returned_rows=data.get("returnedRows", 0),
             status=status,
         )
-
-
-@dataclass
-class SqlParameter:
-    """
-    SQL parameter for parameterized queries.
-
-    Attributes:
-        name: Parameter name (without colon prefix)
-        value: Parameter value
-        type: Data Cloud type name
-    """
-    name: str
-    value: Any
-    type: str
-
-    def to_dict(self) -> dict:
-        """
-        Convert to API request dictionary format.
-
-        Returns:
-            Dictionary with name, value, and type
-        """
-        return {
-            "name": self.name,
-            "value": self.value,
-            "type": self.type,
-        }

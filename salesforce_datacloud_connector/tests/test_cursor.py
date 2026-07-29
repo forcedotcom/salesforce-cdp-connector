@@ -394,3 +394,146 @@ def test_fetch_before_execute():
 
     with pytest.raises(InterfaceError):
         cursor.fetchmany(10)
+
+
+def test_fetch_df_returns_dataframe_when_pandas_present():
+    """R6: fetch_df() returns a pandas DataFrame built from the fetched rows + description."""
+    import pytest
+    pytest.importorskip("pandas")  # only run when the [pandas] extra is installed
+
+    from unittest.mock import Mock
+    from salesforce_datacloud_connector.cursor import Cursor
+
+    cursor = Cursor(Mock())
+    # Simulate an executed query with results:
+    # _check_query_executed() passes when _query_id is not None; _closed defaults to False.
+    cursor._query_id = "query123"
+    cursor._description = [("name", None, None, None, None, None, None),
+                           ("age", None, None, None, None, None, None)]
+    cursor.fetchall = Mock(return_value=[("Alice", 30), ("Bob", 25)])
+
+    df = cursor.fetch_df()
+
+    assert list(df.columns) == ["name", "age"]
+    assert len(df) == 2
+    assert df.iloc[0]["name"] == "Alice"
+
+
+def test_fetch_df_raises_clear_error_without_pandas():
+    """R6: fetch_df() raises an actionable ImportError when pandas is not installed."""
+    import builtins
+    import pytest
+    from unittest.mock import Mock, patch
+    from salesforce_datacloud_connector.cursor import Cursor
+
+    cursor = Cursor(Mock())
+    cursor._query_id = "query123"
+    cursor._description = [("name", None, None, None, None, None, None)]
+    cursor.fetchall = Mock(return_value=[("Alice",)])
+
+    real_import = builtins.__import__
+
+    def _no_pandas(name, *args, **kwargs):
+        if name == "pandas":
+            raise ImportError("No module named 'pandas'")
+        return real_import(name, *args, **kwargs)
+
+    with patch("builtins.__import__", side_effect=_no_pandas):
+        with pytest.raises(ImportError, match=r"salesforce-datacloud\[pandas\]"):
+            cursor.fetch_df()
+
+
+def test_get_query_status_before_execute():
+    """get_query_status() returns None before any query has run."""
+    client = create_mock_client()
+    cursor = Cursor(client)
+
+    assert cursor.get_query_status() is None
+
+
+def test_get_query_status_after_sync_execute():
+    """For a synchronous query, returns the status from the initial response."""
+    client = create_mock_client()
+    cursor = Cursor(client)
+
+    status = QueryStatus(
+        query_id="q1",
+        completion_status="ResultsProduced",
+        progress=1.0,
+        row_count=2,
+        chunk_count=1,
+    )
+    client.execute_query.return_value = QueryResponse(
+        data=[["Alice"], ["Bob"]],
+        metadata=[ColumnMetadata(name="name", type="Varchar")],
+        returned_rows=2,
+        status=status,
+    )
+
+    cursor.execute("SELECT name FROM users")
+
+    observed = cursor.get_query_status()
+    assert observed is status
+    # Non-blocking: get_query_status() must NOT issue a status HTTP call.
+    client.get_query_status.assert_not_called()
+
+
+def test_get_query_status_after_async_poll():
+    """For an async query, returns the final polled status, not the initial Running one."""
+    client = create_mock_client()
+    cursor = Cursor(client)
+
+    client.execute_query.return_value = QueryResponse(
+        data=[],
+        metadata=[ColumnMetadata(name="name", type="Varchar")],
+        returned_rows=0,
+        status=QueryStatus(
+            query_id="q1",
+            completion_status="RUNNING",
+            progress=0.1,
+            row_count=0,
+            chunk_count=0,
+        ),
+    )
+    final = QueryStatus(
+        query_id="q1",
+        completion_status="Finished",
+        progress=1.0,
+        row_count=2,
+        chunk_count=1,
+    )
+    client.poll_until_complete.return_value = final
+    client.fetch_results.return_value = QueryResponse(
+        data=[["Alice"], ["Bob"]],
+        metadata=[],
+        returned_rows=2,
+    )
+
+    cursor.execute("SELECT name FROM huge_table")
+
+    assert cursor.get_query_status() is final
+    client.get_query_status.assert_not_called()
+
+
+def test_get_query_status_after_close_raises():
+    """A closed cursor must not return stale status."""
+    client = create_mock_client()
+    cursor = Cursor(client)
+
+    client.execute_query.return_value = QueryResponse(
+        data=[],
+        metadata=[],
+        returned_rows=0,
+        status=QueryStatus(
+            query_id="q1",
+            completion_status="ResultsProduced",
+            progress=1.0,
+            row_count=0,
+            chunk_count=0,
+        ),
+    )
+    cursor.execute("SELECT 1")
+    cursor.close()
+
+    with pytest.raises(InterfaceError):
+        cursor.get_query_status()

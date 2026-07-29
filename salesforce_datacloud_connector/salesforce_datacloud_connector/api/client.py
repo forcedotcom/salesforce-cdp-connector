@@ -1,22 +1,29 @@
 """
-HTTP client for Salesforce Data Cloud Query API.
+HTTP client for Salesforce Data Cloud off-core Query v3 REST API.
 
-This module handles all REST API calls to the Query API endpoints:
-- Execute queries (createSqlQuery)
-- Check query status (getSqlQuery)
-- Fetch results (getSqlQueryRows)
-- Cancel queries (cancelSqlQuery)
-- Fetch table metadata (getTableMetadata)
+This module implements the v3 REST transport layer for the Query API:
+- execute_query: POST /api/v3/query
+- get_query_status: GET /api/v3/query/{id}
+- fetch_results: GET /api/v3/query/{id}/rows
+- cancel_query: DELETE /api/v3/query/{id}
+- poll_until_complete: blocking poll until a query completes
 """
 
+import re
 import time
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 import requests
 
-from ..exceptions import OperationalError, map_http_error_to_exception
+from ..exceptions import OperationalError, ProgrammingError, map_http_error_to_exception
 from ..types import infer_sql_parameter_type
-from .models import QueryResponse, QueryStatus, SqlParameter
+from .models import QueryResponse, QueryStatus
+
+# Matches a :name placeholder while ignoring PostgreSQL ::type casts. The
+# negative lookbehind (?<![:\w]) rejects the second colon of "::" and any
+# colon glued to an identifier, so "value::regclass" is left untouched but
+# "= :kind" is captured.
+_NAMED_PARAM_RE = re.compile(r"(?<![:\w]):(\w+)")
 
 
 class DataCloudQueryClient:
@@ -27,9 +34,6 @@ class DataCloudQueryClient:
     Includes automatic retry logic for transient failures.
     """
 
-    # API version to use (matches reference Java implementation)
-    API_VERSION = "v64.0"
-
     # Retry configuration
     MAX_RETRIES = 3
     RETRY_WAIT_SECONDS = 5
@@ -39,35 +43,42 @@ class DataCloudQueryClient:
 
     def __init__(
         self,
-        instance_url: str,
+        tenant_endpoint: str,
         auth_token_getter: callable,
         dataspace: Optional[str] = None,
         workload: Optional[str] = None,
     ):
         """
-        Initialize the API client.
+        Initialize the API client for off-core Query v3.
 
         Args:
-            instance_url: Salesforce instance URL
-            auth_token_getter: Callable that returns a valid OAuth token
+            tenant_endpoint: Data Cloud tenant endpoint (e.g., https://{tenant}.c360a.salesforce.com)
+            auth_token_getter: Callable that returns a valid CDP token
             dataspace: Data space name (default: "default")
-            workload: Optional workload name for logging/debugging
+            workload: Optional workload name for observability
         """
-        self.instance_url = instance_url.rstrip("/")
+        self.tenant_endpoint = tenant_endpoint.rstrip("/")
         self.auth_token_getter = auth_token_getter
-        self.dataspace = dataspace
+        self.dataspace = dataspace or "default"
         self.workload = workload
-        self._base_url = f"{self.instance_url}/services/data/{self.API_VERSION}/ssot/query-sql"
+        self._base_url = f"{self.tenant_endpoint}/api/v3/query"
 
     def _get_headers(self) -> Dict[str, str]:
-        """Get headers for API requests, including auth token and dataspace."""
+        """Get headers for v3 API requests."""
         token = self.auth_token_getter()
         headers = {
             "Authorization": f"Bearer {token}",
             "Content-Type": "application/json",
+            "Accept": "application/json",
+            "ctx-dataspace-ds_name": self.dataspace,
         }
-        if self.dataspace:
-            headers["dataspace"] = self.dataspace
+
+        # Add workload header if specified
+        if self.workload:
+            headers["x-hyperdb-workload"] = f"python-connector-v2_{self.workload}"
+        else:
+            headers["x-hyperdb-workload"] = "python-connector-v2"
+
         return headers
 
     def _make_request(
@@ -132,7 +143,11 @@ class DataCloudQueryClient:
             raise OperationalError(f"Request failed: {e}") from e
 
     def _raise_api_error(self, response: requests.Response):
-        """Raise appropriate exception for API error response."""
+        """
+        Raise appropriate exception for API error response.
+
+        V3 error body: {"timestamp", "error", "message", "path", "tenantId", "internalErrorCode", "details"}
+        """
         try:
             error_data = response.json()
             error_message = error_data.get("message", response.text)
@@ -144,27 +159,60 @@ class DataCloudQueryClient:
         )
         raise exception
 
-    def _convert_parameters(self, params: Optional[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    @staticmethod
+    def _param_entry(value: Any) -> Dict[str, Any]:
+        """Build one v3 parameter entry: {"type": <lowercase>, "value": ...}."""
+        return {"type": infer_sql_parameter_type(value).lower(), "value": value}
+
+    def _bind_parameters(
+        self, sql: str, params: Optional[Dict[str, Any]]
+    ) -> Tuple[str, List[Dict[str, Any]]]:
         """
-        Convert Python dict parameters to sqlParameters array format.
+        Prepare SQL and parameters for v3, which accepts only positional
+        (question-mark) parameters.
+
+        The driver advertises paramstyle="named", so callers write :name
+        placeholders with a values dict. v3 rejects named placeholders
+        ("conflicting parameter style 'named' ... set to 'qmark'"), so each
+        :name is rewritten to ? and its value emitted positionally in the order
+        the placeholders appear in the SQL. A name used N times expands to N
+        question marks and N repeated values.
+
+        SQL that already uses ? placeholders (e.g. internal catalog queries)
+        contains no :name tokens: it is passed through unchanged and the value
+        array is built from the dict's insertion order.
 
         Args:
-            params: Dictionary of named parameters
+            sql: Query text with :name and/or ? placeholders
+            params: Values dict (names match the :name placeholders)
 
         Returns:
-            List of parameter dictionaries in API format
+            (sql_with_qmarks, positional_parameter_array)
+
+        Raises:
+            ProgrammingError: If the SQL references a :name absent from params
         """
         if not params:
-            return []
+            return sql, []
 
-        sql_params = []
-        for name, value in params.items():
-            param_type = infer_sql_parameter_type(value)
-            sql_params.append(
-                SqlParameter(name=name, value=value, type=param_type).to_dict()
-            )
+        # No :name placeholders → qmark-style SQL: positional array from dict order.
+        if not _NAMED_PARAM_RE.search(sql):
+            return sql, [self._param_entry(v) for v in params.values()]
 
-        return sql_params
+        sql_params: List[Dict[str, Any]] = []
+
+        def _replace(match: "re.Match") -> str:
+            name = match.group(1)
+            if name not in params:
+                raise ProgrammingError(
+                    f"No value supplied for named parameter ':{name}'"
+                )
+            sql_params.append(self._param_entry(params[name]))
+            return "?"
+
+        # re.sub invokes _replace left-to-right, so sql_params ends up in SQL order.
+        new_sql = _NAMED_PARAM_RE.sub(_replace, sql)
+        return new_sql, sql_params
 
     def execute_query(
         self,
@@ -173,48 +221,64 @@ class DataCloudQueryClient:
         row_limit: int = 1000000,
     ) -> QueryResponse:
         """
-        Execute a SQL query (createSqlQuery endpoint).
+        Execute a SQL query via POST /api/v3/query.
 
         Args:
-            sql: SQL query string (may contain :param placeholders)
-            parameters: Named parameters dict (e.g., {"param": "value"})
-            row_limit: Maximum rows to return in initial response (server may limit)
+            sql: SQL query string
+            parameters: Named parameters dict (e.g., {"status": "Active"})
+            row_limit: Maximum rows to return (passed as queryRowLimit)
 
         Returns:
             QueryResponse with initial results and status
 
         Raises:
-            ProgrammingError: For SQL syntax errors
-            OperationalError: For auth/network failures
+            ProgrammingError: For SQL syntax errors (400)
+            OperationalError: For auth/network failures (401, 403, 500+)
         """
-        params = {}
-        if self.workload:
-            params["workload"] = self.workload
+        # v3 accepts only positional (qmark) parameters; rewrite any :name
+        # placeholders and build the positional array in SQL order.
+        sql, sql_params = self._bind_parameters(sql, parameters)
 
         request_body = {
             "sql": sql,
-            "rowLimit": row_limit,
+            "transferMode": "ADAPTIVE",
+            "queryRowLimit": row_limit,
         }
 
-        # Add parameters if provided
-        if parameters:
-            request_body["sqlParameters"] = self._convert_parameters(parameters)
+        if sql_params:
+            request_body["parameters"] = sql_params
 
-        response = self._make_request("POST", self._base_url, params=params, json_data=request_body)
-        return QueryResponse.from_dict(response.json())
+        response = self._make_request("POST", self._base_url, json_data=request_body)
+
+        # Parse response body
+        body = response.json()
+        query_response = QueryResponse.from_dict(body)
+
+        # Parse status from x-hyperdb-status header (v3). The header carries the
+        # queryId/rowCount/completionStatus the cursor relies on; the body never
+        # contains status in v3, so a missing header is a hard error, not None.
+        status_header = response.headers.get("x-hyperdb-status")
+        if not status_header:
+            raise OperationalError("Missing x-hyperdb-status header in query response")
+
+        import json
+        status_data = json.loads(status_header)
+        query_response.status = QueryStatus.from_dict(status_data)
+
+        return query_response
 
     def get_query_status(
         self, query_id: str, wait_time_ms: Optional[int] = None
     ) -> QueryStatus:
         """
-        Get query status (getSqlQuery endpoint).
+        Get query status via GET /api/v3/query/{queryId}.
 
         Args:
             query_id: Query ID from execute_query
             wait_time_ms: Milliseconds to wait before returning (long-polling, max 10000)
 
         Returns:
-            QueryStatus object
+            QueryStatus object (parsed from x-hyperdb-status header)
 
         Raises:
             OperationalError: For network failures
@@ -227,8 +291,15 @@ class DataCloudQueryClient:
             params["waitTimeMs"] = min(wait_time_ms, self.MAX_WAIT_TIME_MS)
 
         response = self._make_request("GET", url, params=params)
-        data = response.json()
-        return QueryStatus.from_dict(data.get("status", {}))
+
+        # Parse status from x-hyperdb-status header (v3)
+        status_header = response.headers.get("x-hyperdb-status")
+        if not status_header:
+            raise OperationalError("Missing x-hyperdb-status header in response")
+
+        import json
+        status_data = json.loads(status_header)
+        return QueryStatus.from_dict(status_data)
 
     def fetch_results(
         self,
@@ -238,36 +309,33 @@ class DataCloudQueryClient:
         omit_schema: bool = True,
     ) -> QueryResponse:
         """
-        Fetch query results (getSqlQueryRows endpoint).
+        Fetch query results via GET /api/v3/query/{queryId}/rows.
 
         Args:
-            query_id: Query ID from execute_query
-            offset: Starting row number (0-based)
-            row_limit: Maximum rows to return (server determines actual chunk size ~2MB)
-            omit_schema: If True, don't return metadata (reduces response size)
+            query_id: Query ID
+            offset: Starting row number (0-based, required in v3)
+            row_limit: Maximum rows to return (default: 1000000, server may limit)
+            omit_schema: If True, omit metadata in response (not used in v3, kept for compatibility)
 
         Returns:
             QueryResponse with rows
 
         Raises:
-            ProgrammingError: If offset is out of range
+            ProgrammingError: If offset is out of range (400)
             OperationalError: For network failures
         """
         url = f"{self._base_url}/{query_id}/rows"
         params = {
             "offset": offset,
-            "rowLimit": row_limit,
-            "omitSchema": "true" if omit_schema else "false",
+            "limit": row_limit,
+            "byteLimit": 20971520,  # 20MB default
         }
-
-        if self.workload:
-            params["workload"] = self.workload
 
         try:
             response = self._make_request("GET", url, params=params)
             return QueryResponse.from_dict(response.json())
         except Exception as e:
-            # Handle "Request out of range" gracefully
+            # Handle "Request out of range" gracefully (400 error)
             if "out of range" in str(e).lower():
                 # Return empty response
                 return QueryResponse(data=[], metadata=[], returned_rows=0)
@@ -275,7 +343,7 @@ class DataCloudQueryClient:
 
     def cancel_query(self, query_id: str):
         """
-        Cancel a running query (cancelSqlQuery endpoint).
+        Cancel a running query via DELETE /api/v3/query/{queryId}.
 
         Args:
             query_id: Query ID to cancel

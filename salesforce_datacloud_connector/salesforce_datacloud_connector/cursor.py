@@ -7,7 +7,7 @@ The Cursor class executes queries and manages result retrieval.
 from typing import Any, Dict, List, Optional, Tuple
 
 from .api.client import DataCloudQueryClient
-from .api.models import ColumnMetadata
+from .api.models import ColumnMetadata, QueryStatus
 from .exceptions import InterfaceError, NotSupportedError
 from .types import build_description_tuple, convert_datacloud_value
 
@@ -40,6 +40,10 @@ class Cursor:
         self._description: Optional[List[Tuple]] = None
         self._rowcount: int = -1  # DB-API 2.0: -1 for SELECT, else number of rows affected
         self._closed: bool = False
+        # Latest QueryStatus observed on this cursor — refreshed by execute()
+        # and by the polling loop. Returned by get_query_status() without an
+        # extra HTTP call.
+        self._query_status: Optional[QueryStatus] = None
 
     @property
     def description(self) -> Optional[List[Tuple]]:
@@ -143,7 +147,9 @@ class Cursor:
         Execute a SQL query.
 
         Args:
-            operation: SQL query string (may contain :param placeholders)
+            operation: SQL query string. May contain :name placeholders
+                (paramstyle="named"); these are rewritten to v3 positional
+                parameters before the request is sent.
             parameters: Named parameters dict (e.g., {"param": "value"})
 
         Returns:
@@ -173,6 +179,7 @@ class Cursor:
         self._query_id = response.status.query_id
         self._metadata = response.metadata
         self._total_row_count = response.status.row_count
+        self._query_status = response.status
         self._rowcount = -1  # SELECT queries return -1
         self._build_description()
 
@@ -186,6 +193,7 @@ class Cursor:
             # Asynchronous response - need to poll until complete
             final_status = self._client.poll_until_complete(self._query_id)
             self._total_row_count = final_status.row_count
+            self._query_status = final_status
 
             # Fetch first chunk
             self._fetch_next_chunk()
@@ -322,6 +330,30 @@ class Cursor:
         self._check_query_executed()
 
         self._client.cancel_query(self._query_id)
+
+    def get_query_status(self) -> Optional[QueryStatus]:
+        """
+        Return the most recently observed QueryStatus for this cursor's query.
+
+        Non-blocking — does not issue an extra HTTP call. The status is
+        refreshed when `execute()` runs and after the async polling loop
+        completes. In off-core Query v3 the status is parsed from the
+        `x-hyperdb-status` response header and exposes: ``query_id``,
+        ``completion_status``, ``progress``, ``row_count``, ``chunk_count``,
+        ``expiration_time``.
+
+        Returns:
+            The latest QueryStatus, or None if no query has been executed.
+
+        Example:
+            cursor.execute("SELECT ...")
+            for _ in cursor:
+                pass
+            status = cursor.get_query_status()
+            print(status.row_count, status.progress)
+        """
+        self._check_closed()
+        return self._query_status
 
     def fetch_df(self):
         """

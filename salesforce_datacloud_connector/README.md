@@ -9,13 +9,17 @@ This package (`salesforce-datacloud-connector`) supersedes the
 `salesforce-cdp-connector` package. New projects should adopt this package;
 existing `salesforce-cdp-connector` users should plan to migrate.
 
+**Current version:** `2.0.0b2` (beta 2, off-core Query v3 migration)
+
 [![Python Version](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
 [![License](https://img.shields.io/badge/license-BSD--3--Clause-green.svg)](../LICENSE.txt)
 
 ## Important: this is a beta release
 
-`salesforce-datacloud-connector` is currently published as a **beta** on PyPI
-(`2.0.0b1`). The public API surface may change before the GA release.
+`salesforce-datacloud-connector` is currently published as **version 2.0.0b2
+(beta 2)** on PyPI. This release replatforms query execution onto the off-core
+Query v3 REST API. The public DB-API 2.0 surface is stable, but the package is
+still in beta to allow for adjustments based on field feedback.
 
 - Install with the `--pre` flag — pip will not pick up pre-releases otherwise:
 
@@ -27,7 +31,7 @@ existing `salesforce-cdp-connector` users should plan to migrate.
   manifests:
 
   ```text
-  salesforce-datacloud-connector==2.0.0b1
+  salesforce-datacloud-connector==2.0.0b2
   ```
 
   This protects you from accidental upgrades to a later beta or release
@@ -36,7 +40,7 @@ existing `salesforce-cdp-connector` users should plan to migrate.
 ## Features
 
 - **DB-API 2.0 compliant** — standard Python database interface.
-- **Three OAuth flows** — Username/Password, JWT Bearer Token, Refresh Token.
+- **Four OAuth flows** — JWT Bearer Token, Refresh Token, Client Credentials, Username/Password.
 - **Pandas integration** — works with `pandas.read_sql()` and
   `cursor.fetch_df()` (under the `[pandas]` extra).
 - **Notebook-ready** — interactive exploration and visualization in Jupyter.
@@ -73,31 +77,35 @@ Optional (under `[pandas]` extra):
 
 ## Quickstart
 
+The connector uses OAuth for authentication. **JWT bearer token** is the
+recommended flow for production and demo environments:
+
 ```python
 import salesforce_datacloud_connector as sfdc
 
-# Connect to Salesforce Data Cloud (refresh token flow shown — see below for
-# all three flows)
+# Read private key from file (PEM format)
+with open("private_key.pem", "r") as f:
+    private_key = f.read()
+
 conn = sfdc.connect(
     login_url="https://login.salesforce.com",
-    auth_type="refresh_token",
-    client_id="YOUR_CLIENT_ID",
-    client_secret="YOUR_CLIENT_SECRET",
-    refresh_token="YOUR_REFRESH_TOKEN",
+    auth_type="jwt",
+    username="your_user@example.com",
+    client_id="YOUR_CONNECTED_APP_CLIENT_ID",
+    jwt_private_key=private_key,
 )
 
 cursor = conn.cursor()
-cursor.execute("SELECT Id, Name FROM Account LIMIT 10")
-
-for row in cursor:
-    print(row)
+cursor.execute("SELECT COUNT(*) FROM Account")
+(count,) = cursor.fetchone()
+print(f"Total accounts: {count}")
 
 cursor.close()
 conn.close()
 ```
 
-The connector also supports the standard Python context-manager idioms — both
-the connection and the cursor close cleanly when their `with` blocks exit:
+The connector also supports context managers — both the connection and the cursor
+close cleanly when their `with` blocks exit:
 
 ```python
 import salesforce_datacloud_connector as sfdc
@@ -111,25 +119,14 @@ with sfdc.connect(...) as conn:
 
 ## Authentication
 
-The connector ships three OAuth flows, all driven through `sfdc.connect(...)`
+The connector ships four OAuth flows, all driven through `sfdc.connect(...)`
 via the `auth_type` keyword.
 
-### Username / Password
+### JWT Bearer Token (recommended)
 
-```python
-import salesforce_datacloud_connector as sfdc
-
-conn = sfdc.connect(
-    login_url="https://login.salesforce.com",
-    auth_type="username_password",
-    username="user@example.com",
-    password="your_password",
-    client_id="your_connected_app_client_id",
-    client_secret="your_connected_app_client_secret",
-)
-```
-
-### JWT Bearer Token
+JWT bearer token is the recommended flow for production services and demos.
+It requires a connected app configured with a certificate and the `api`,
+`cdpquery`, and `refresh_token offline_access` scopes.
 
 ```python
 import salesforce_datacloud_connector as sfdc
@@ -146,6 +143,12 @@ conn = sfdc.connect(
 )
 ```
 
+**Setup:**
+1. Create a connected app in Salesforce Setup → App Manager
+2. Enable OAuth Settings, configure callback URL, add `api`, `cdpquery`, `refresh_token offline_access` scopes
+3. Enable "Use digital signatures" and upload a certificate (self-signed is fine for dev)
+4. Extract the private key to a PEM file: `openssl pkcs12 -in cert.p12 -nocerts -nodes -out private_key.pem`
+
 ### Refresh Token (recommended for long-running services)
 
 ```python
@@ -159,6 +162,44 @@ conn = sfdc.connect(
     client_id=os.environ["SFDC_CLIENT_ID"],
     client_secret=os.environ["SFDC_CLIENT_SECRET"],
     refresh_token=os.environ["SFDC_REFRESH_TOKEN"],
+)
+```
+
+### Client Credentials
+
+Client Credentials is a server-to-server flow with no user context — the
+connected app itself is the principal. It requires only a client ID and
+secret, and the connected app must be configured to allow the client
+credentials flow.
+
+```python
+import os
+
+import salesforce_datacloud_connector as sfdc
+
+conn = sfdc.connect(
+    login_url="https://login.salesforce.com",
+    auth_type="client_credentials",
+    client_id=os.environ["SFDC_CLIENT_ID"],
+    client_secret=os.environ["SFDC_CLIENT_SECRET"],
+)
+```
+
+### Username/Password (deprecated)
+
+Username/password authentication is **deprecated** and will be removed in a
+future release. Use JWT bearer token or refresh token flows instead.
+
+```python
+import salesforce_datacloud_connector as sfdc
+
+conn = sfdc.connect(
+    login_url="https://login.salesforce.com",
+    auth_type="username_password",
+    username="user@example.com",
+    password="your_password",
+    client_id="your_connected_app_client_id",
+    client_secret="your_connected_app_client_secret",
 )
 ```
 
@@ -338,7 +379,7 @@ command above.
 
 ## Beta-period limitations
 
-`2.0.0b1` is intentionally scoped:
+`2.0.0b2` is intentionally scoped:
 
 1. **Read-only** — no `INSERT`, `UPDATE`, `DELETE`, or DDL operations.
 2. **No streaming** — results buffer in memory (chunked pagination keeps
