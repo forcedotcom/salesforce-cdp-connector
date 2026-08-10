@@ -52,6 +52,9 @@ from .types import BINARY, DATETIME, NUMBER, ROWID, STRING
 # Import and expose metadata structures
 from .metadata import DataCloudTable, Field
 
+# Import and expose query status structure (used by Cursor.get_query_status)
+from .api.models import QueryStatus
+
 # Import connection
 from .connection import Connection
 
@@ -206,6 +209,8 @@ __all__ = [
     # Metadata structures
     "DataCloudTable",
     "Field",
+    # Query status structure
+    "QueryStatus",
     # Authenticators (advanced usage)
     "UsernamePasswordAuthenticator",
     "JWTAuthenticator",
