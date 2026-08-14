@@ -6,7 +6,8 @@ This module provides OAuth authenticators for different flows:
 - JWT Bearer Token (OAuth 2.0 JWT Bearer Flow)
 - Refresh Token (OAuth 2.0 Refresh Token Flow)
 
-All authenticators implement token caching with automatic refresh.
+All authenticators fetch a fresh token on every call (no caching), matching
+the JDBC driver's DataCloudTokenProvider.
 """
 
 from __future__ import annotations
@@ -25,8 +26,8 @@ class OAuthAuthenticator(ABC):
     """
     Abstract base class for OAuth authenticators.
 
-    All authenticators must implement get_oauth_token() and handle token caching
-    with automatic refresh before expiration (60s buffer).
+    All authenticators must implement _fetch_new_token(). get_oauth_token()
+    always fetches a fresh token — no core-token caching (matches JDBC).
     """
 
     def __init__(self, login_url: str = "https://login.salesforce.com"):
@@ -38,8 +39,6 @@ class OAuthAuthenticator(ABC):
                       "https://test.salesforce.com" for sandboxes)
         """
         self.login_url = login_url.rstrip("/")
-        self._cached_token: Optional[str] = None
-        self._token_expiry: Optional[float] = None
         self._instance_url: Optional[str] = None
 
     @abstractmethod
@@ -57,9 +56,10 @@ class OAuthAuthenticator(ABC):
 
     def get_oauth_token(self) -> str:
         """
-        Get a valid OAuth token, using cache or fetching a new one if needed.
+        Fetch a fresh OAuth token.
 
-        Automatically refreshes the token if it's within 60 seconds of expiry.
+        Matches the JDBC driver's DataCloudTokenProvider.getOAuthToken(), which
+        always fetches a new core token rather than caching one.
 
         Returns:
             Valid OAuth access token
@@ -67,20 +67,7 @@ class OAuthAuthenticator(ABC):
         Raises:
             OperationalError: If authentication fails
         """
-        current_time = time.time()
-
-        # Check if we have a cached token that's still valid (with 60s buffer)
-        if (
-            self._cached_token is not None
-            and self._token_expiry is not None
-            and current_time < (self._token_expiry - 60)
-        ):
-            return self._cached_token
-
-        # Fetch new token and instance URL
-        access_token, expires_in, instance_url = self._fetch_new_token()
-        self._cached_token = access_token
-        self._token_expiry = current_time + expires_in
+        access_token, _expires_in, instance_url = self._fetch_new_token()
         self._instance_url = instance_url
 
         return access_token
@@ -105,11 +92,6 @@ class OAuthAuthenticator(ABC):
             raise OperationalError("Instance URL not available from OAuth response")
 
         return self._instance_url
-
-    def invalidate_token(self):
-        """Invalidate the cached token, forcing a refresh on next request."""
-        self._cached_token = None
-        self._token_expiry = None
 
 
 class UsernamePasswordAuthenticator(OAuthAuthenticator):

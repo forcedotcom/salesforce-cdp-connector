@@ -40,13 +40,6 @@ def test_jwt_token_exchange_success():
         status=200,
     )
 
-    # Mock core token revocation
-    responses.add(
-        responses.POST,
-        "https://myorg.my.salesforce.com/services/oauth2/revoke",
-        status=200,
-    )
-
     # Create JWT authenticator
     with patch("jwt.encode", return_value="mock_jwt"):
         jwt_auth = JWTAuthenticator(
@@ -70,16 +63,16 @@ def test_jwt_token_exchange_success():
         tenant_endpoint = exchanger.get_tenant_endpoint()
         assert tenant_endpoint == "https://tenant123.c360a.salesforce.com"
 
-        # Verify request sequence: JWT auth → exchange → revoke
-        assert len(responses.calls) == 3
+        # Verify request sequence: JWT auth → exchange (no revoke, matches JDBC)
+        assert len(responses.calls) == 2
         assert "/services/oauth2/token" in responses.calls[0].request.url  # Core token
         assert "/services/a360/token" in responses.calls[1].request.url  # Exchange
-        assert "/services/oauth2/revoke" in responses.calls[2].request.url  # Revoke
 
 
 @responses.activate
-def test_cdp_token_caching_with_60s_buffer():
-    """Test that CDP tokens are cached and reused with 60s buffer before expiry."""
+def test_cdp_token_caching_with_no_buffer():
+    """CDP tokens are cached until exact expiry, with no refresh buffer
+    (matches JDBC's DataCloudToken.isAlive(): now <= expiry)."""
     # Mock core token fetch
     responses.add(
         responses.POST,
@@ -101,13 +94,6 @@ def test_cdp_token_caching_with_60s_buffer():
             "expires_in": 150,  # 150 seconds
             "instance_url": "https://tenant123.c360a.salesforce.com",
         },
-        status=200,
-    )
-
-    # Mock core token revocation
-    responses.add(
-        responses.POST,
-        "https://myorg.my.salesforce.com/services/oauth2/revoke",
         status=200,
     )
 
@@ -134,10 +120,17 @@ def test_cdp_token_caching_with_60s_buffer():
         assert cdp_token_2 == "cdp_token_1"
         assert len(responses.calls) == first_call_count  # No additional calls
 
-        # Simulate time passing (100s: past the 60s buffer threshold of 90s = expiry 150s - 60s)
-        with patch("time.time", return_value=time.time() + 100):
-            # Should trigger re-exchange because current_time >= (expiry - 60)
-            # Add mock for second exchange
+        base_time = time.time()
+
+        # 100s in: still well within expiry (150s) — no 60s buffer means this
+        # must still be a cache hit, unlike the old buffered behavior.
+        with patch("time.time", return_value=base_time + 100):
+            cdp_token_3 = exchanger.get_cdp_token()
+            assert cdp_token_3 == "cdp_token_1"
+            assert len(responses.calls) == first_call_count  # Still no additional calls
+
+        # 151s in: past the exact expiry — must re-exchange.
+        with patch("time.time", return_value=base_time + 151):
             responses.add(
                 responses.POST,
                 "https://test.salesforce.com/services/oauth2/token",
@@ -158,15 +151,10 @@ def test_cdp_token_caching_with_60s_buffer():
                 },
                 status=200,
             )
-            responses.add(
-                responses.POST,
-                "https://myorg.my.salesforce.com/services/oauth2/revoke",
-                status=200,
-            )
 
-            cdp_token_3 = exchanger.get_cdp_token()
-            assert cdp_token_3 == "cdp_token_2"  # New token
-            assert len(responses.calls) > first_call_count  # Additional calls made
+            cdp_token_4 = exchanger.get_cdp_token()
+            assert cdp_token_4 == "cdp_token_2"  # New token
+            assert len(responses.calls) == first_call_count + 2  # core fetch + exchange
 
 
 @responses.activate
@@ -193,11 +181,6 @@ def test_cdp_token_invalidation():
         },
         status=200,
     )
-    responses.add(
-        responses.POST,
-        "https://myorg.my.salesforce.com/services/oauth2/revoke",
-        status=200,
-    )
 
     # Mock second exchange
     responses.add(
@@ -218,11 +201,6 @@ def test_cdp_token_invalidation():
             "expires_in": 3600,
             "instance_url": "https://tenant123.c360a.salesforce.com",
         },
-        status=200,
-    )
-    responses.add(
-        responses.POST,
-        "https://myorg.my.salesforce.com/services/oauth2/revoke",
         status=200,
     )
 
@@ -247,26 +225,18 @@ def test_cdp_token_invalidation():
         # Invalidate token
         exchanger.invalidate_token()
 
-        # Get token again - should trigger a new CDP exchange.
-        # The first exchange's revoke also invalidated the core authenticator's own
-        # cache, so it re-fetches a core token rather than reusing the revoked one:
-        # core-token fetch + CDP exchange + core-token revoke = 3 additional calls.
+        # Get token again - should trigger a new CDP exchange: core-token fetch
+        # (the core authenticator never caches) + CDP exchange = 2 additional calls.
         cdp_token_2 = exchanger.get_cdp_token()
         assert cdp_token_2 == "cdp_token_2"
-        assert len(responses.calls) == first_call_count + 3  # fetch + exchange + revoke
+        assert len(responses.calls) == first_call_count + 2  # fetch + exchange
 
 
 @responses.activate
-def test_core_token_refetched_after_revoke_on_natural_cdp_expiry():
-    """Regression: a revoked core token must not be reused for the next exchange.
-
-    Core tokens live ~2h, CDP tokens ~1h. Around the 1h mark get_cdp_token() must
-    re-exchange, but the core authenticator's own cache (unaware of the revoke)
-    would still consider its ~2h-old token valid. Without invalidating that cache
-    on revoke, this re-exchange would hand the already-revoked core token back to
-    a360, which fails it with 401. Assert the second exchange actually used a
-    freshly fetched core token, not the revoked one.
-    """
+def test_core_token_refetched_on_natural_cdp_expiry():
+    """The core authenticator never caches (matches JDBC's getOAuthToken()),
+    so every CDP re-exchange — including a natural expiry-driven one — uses a
+    freshly fetched core token rather than reusing an old one."""
     responses.add(
         responses.POST,
         "https://test.salesforce.com/services/oauth2/token",
@@ -287,11 +257,6 @@ def test_core_token_refetched_after_revoke_on_natural_cdp_expiry():
         },
         status=200,
     )
-    responses.add(
-        responses.POST,
-        "https://myorg.my.salesforce.com/services/oauth2/revoke",
-        status=200,
-    )
 
     with patch("jwt.encode", return_value="mock_jwt"):
         jwt_auth = JWTAuthenticator(
@@ -306,13 +271,12 @@ def test_core_token_refetched_after_revoke_on_natural_cdp_expiry():
             dataspace="default",
         )
 
+        base_time = time.time()
         cdp_token_1 = exchanger.get_cdp_token()
         assert cdp_token_1 == "cdp_token_1"
 
-        # Past the CDP token's 60s buffer (expiry 3600s) but well within what the
-        # core authenticator's own cache would consider valid (expiry 7200s) if it
-        # didn't know about the revoke.
-        with patch("time.time", return_value=time.time() + 3600):
+        # Past the CDP token's exact expiry (3600s, no buffer).
+        with patch("time.time", return_value=base_time + 3601):
             responses.add(
                 responses.POST,
                 "https://test.salesforce.com/services/oauth2/token",
@@ -333,11 +297,6 @@ def test_core_token_refetched_after_revoke_on_natural_cdp_expiry():
                 },
                 status=200,
             )
-            responses.add(
-                responses.POST,
-                "https://myorg.my.salesforce.com/services/oauth2/revoke",
-                status=200,
-            )
 
             cdp_token_2 = exchanger.get_cdp_token()
             assert cdp_token_2 == "cdp_token_2"
@@ -345,7 +304,7 @@ def test_core_token_refetched_after_revoke_on_natural_cdp_expiry():
             exchange_calls = [c for c in responses.calls if "/services/a360/token" in c.request.url]
             assert len(exchange_calls) == 2
             # The second exchange must carry the freshly fetched core token, not
-            # the one already revoked after the first exchange.
+            # the one used for the first exchange.
             assert "core_token_2" in exchange_calls[1].request.url
             assert "core_token_1" not in exchange_calls[1].request.url
 
@@ -374,11 +333,6 @@ def test_get_tenant_endpoint_triggers_exchange():
         },
         status=200,
     )
-    responses.add(
-        responses.POST,
-        "https://myorg.my.salesforce.com/services/oauth2/revoke",
-        status=200,
-    )
 
     with patch("jwt.encode", return_value="mock_jwt"):
         jwt_auth = JWTAuthenticator(
@@ -400,7 +354,7 @@ def test_get_tenant_endpoint_triggers_exchange():
         # Verify token was also cached
         cdp_token = exchanger.get_cdp_token()
         assert cdp_token == "cdp_token"
-        assert len(responses.calls) == 3  # Only one exchange happened
+        assert len(responses.calls) == 2  # Only one exchange happened
 
 
 @responses.activate
@@ -514,11 +468,6 @@ def test_dataspace_included_in_exchange_request():
         },
         status=200,
     )
-    responses.add(
-        responses.POST,
-        "https://myorg.my.salesforce.com/services/oauth2/revoke",
-        status=200,
-    )
 
     with patch("jwt.encode", return_value="mock_jwt"):
         jwt_auth = JWTAuthenticator(
@@ -565,11 +514,6 @@ def test_dataspace_omitted_if_none():
             "expires_in": 3600,
             "instance_url": "https://tenant123.c360a.salesforce.com",
         },
-        status=200,
-    )
-    responses.add(
-        responses.POST,
-        "https://myorg.my.salesforce.com/services/oauth2/revoke",
         status=200,
     )
 
@@ -629,11 +573,6 @@ def test_tenant_endpoint_schemeless_response_gets_https_prefix():
         },
         status=200,
     )
-    responses.add(
-        responses.POST,
-        "https://myorg.my.salesforce.com/services/oauth2/revoke",
-        status=200,
-    )
 
     with patch("jwt.encode", return_value="mock_jwt"):
         jwt_auth = JWTAuthenticator(
@@ -680,13 +619,6 @@ def test_client_credentials_token_exchange_success():
         status=200,
     )
 
-    # Mock core token revocation
-    responses.add(
-        responses.POST,
-        "https://myorg.my.salesforce.com/services/oauth2/revoke",
-        status=200,
-    )
-
     from salesforce_datacloud_connector.auth.oauth import ClientCredentialsAuthenticator
 
     # Create client credentials authenticator
@@ -710,9 +642,8 @@ def test_client_credentials_token_exchange_success():
     tenant_endpoint = exchanger.get_tenant_endpoint()
     assert tenant_endpoint == "https://tenant456.c360a.salesforce.com"
 
-    # Verify request sequence: client creds auth → exchange → revoke
-    assert len(responses.calls) == 3
+    # Verify request sequence: client creds auth → exchange (no revoke, matches JDBC)
+    assert len(responses.calls) == 2
     assert "/services/oauth2/token" in responses.calls[0].request.url  # Core token
     assert "grant_type=client_credentials" in responses.calls[0].request.body
     assert "/services/a360/token" in responses.calls[1].request.url  # Exchange
-    assert "/services/oauth2/revoke" in responses.calls[2].request.url  # Revoke

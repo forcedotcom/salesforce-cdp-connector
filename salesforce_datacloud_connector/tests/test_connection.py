@@ -181,11 +181,9 @@ def test_connect_wires_token_exchanger():
     from salesforce_datacloud_connector.auth.token_exchanger import DataCloudTokenExchanger
     from salesforce_datacloud_connector.auth.oauth import JWTAuthenticator
 
-    # Mock the JWT authenticator's token fetch, the exchange, and the revoke
-    # (patch _revoke_core_token so no live HTTP call escapes during connect()).
+    # Mock the JWT authenticator's token fetch and the exchange.
     with patch.object(JWTAuthenticator, '_fetch_new_token', return_value=("core_token", 7200, "https://test.salesforce.com")), \
-         patch.object(DataCloudTokenExchanger, '_exchange_token', return_value=("cdp_token", 7200, "https://tenant.c360a.salesforce.com")), \
-         patch.object(DataCloudTokenExchanger, '_revoke_core_token', return_value=None):
+         patch.object(DataCloudTokenExchanger, '_exchange_token', return_value=("cdp_token", 7200, "https://tenant.c360a.salesforce.com")):
             # Create connection via connect()
             conn = sfdc.connect(
                 login_url="https://login.salesforce.com",
@@ -219,10 +217,8 @@ def test_connect_wires_client_credentials():
     from salesforce_datacloud_connector.auth.oauth import ClientCredentialsAuthenticator
 
     # Mock the client-credentials authenticator's token fetch (no user/JWT needed).
-    # Patch _revoke_core_token too so no live HTTP call escapes during connect().
     with patch.object(ClientCredentialsAuthenticator, '_fetch_new_token', return_value=("core_token", 7200, "https://test.salesforce.com")), \
-         patch.object(DataCloudTokenExchanger, '_exchange_token', return_value=("cdp_token", 7200, "https://tenant.c360a.salesforce.com")), \
-         patch.object(DataCloudTokenExchanger, '_revoke_core_token', return_value=None):
+         patch.object(DataCloudTokenExchanger, '_exchange_token', return_value=("cdp_token", 7200, "https://tenant.c360a.salesforce.com")):
             conn = sfdc.connect(
                 login_url="https://login.salesforce.com",
                 auth_type="client_credentials",

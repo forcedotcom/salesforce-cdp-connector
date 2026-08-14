@@ -21,10 +21,10 @@ class DataCloudTokenExchanger:
     Exchanges Salesforce core tokens for Data Cloud CDP tokens.
 
     Wraps any OAuthAuthenticator instance and handles the token exchange flow:
-    1. Fetch core token from authenticator
+    1. Fetch a fresh core token from authenticator (no core-token caching)
     2. POST to /services/a360/token with core token
-    3. Cache CDP token with 60s expiry buffer
-    4. Revoke core token for security
+    3. Cache CDP token until it expires (no refresh buffer, matches JDBC's
+       DataCloudToken.isAlive())
 
     The CDP token exchange returns the Data Cloud tenant endpoint, which is
     different from the Salesforce instance URL.
@@ -56,9 +56,9 @@ class DataCloudTokenExchanger:
         """
         Get a valid CDP token, using cache or exchanging a new one if needed.
 
-        Uses the same 60s-buffer caching pattern as OAuthAuthenticator:
-        - If cached token exists and current_time < (expiry - 60), return cached token
-        - Otherwise, fetch a fresh core token and exchange it for a CDP token
+        Mirrors JDBC's DataCloudToken.isAlive(): the cached token is used while
+        current_time <= expiry, with no refresh buffer. On a miss, a fresh core
+        token is fetched (the core authenticator never caches) and exchanged.
 
         Returns:
             Valid CDP access token
@@ -68,15 +68,15 @@ class DataCloudTokenExchanger:
         """
         current_time = time.time()
 
-        # Check cache with 60s buffer
+        # Check cache — alive until exact expiry, no buffer.
         if (
             self._cached_cdp_token is not None
             and self._token_expiry is not None
-            and current_time < (self._token_expiry - 60)
+            and current_time <= self._token_expiry
         ):
             return self._cached_cdp_token
 
-        # Exchange core token for CDP token
+        # Exchange a fresh core token for a CDP token
         core_token = self._core_authenticator.get_oauth_token()
         instance_url = self._core_authenticator.get_instance_url()
 
@@ -88,9 +88,6 @@ class DataCloudTokenExchanger:
         self._cached_cdp_token = cdp_token
         self._token_expiry = current_time + expires_in
         self._tenant_endpoint = tenant_endpoint
-
-        # Revoke core token for security (match v1 behavior)
-        self._revoke_core_token(instance_url, core_token)
 
         return cdp_token
 
@@ -201,28 +198,3 @@ class DataCloudTokenExchanger:
         if endpoint.startswith(("https://", "http://")):
             return endpoint
         return f"https://{endpoint}"
-
-    def _revoke_core_token(self, instance_url: str, core_token: str):
-        """
-        Revoke the core token after successful CDP token exchange.
-
-        This matches v1 behavior and improves security by limiting core token lifetime.
-        Also invalidates the core authenticator's own cache: that cache's ~2h TTL
-        outlives the revoked token, so without this a later re-exchange (the CDP
-        token lives ~1h) would pull the same now-revoked token back out of cache
-        and fail the exchange with a 401.
-
-        Args:
-            instance_url: Salesforce instance URL
-            core_token: Core access token to revoke
-        """
-        revoke_url = f"{instance_url}/services/oauth2/revoke"
-        params = {"token": core_token}
-
-        try:
-            requests.post(revoke_url, params=params, timeout=10)
-            # Revocation failures are non-fatal (token will expire naturally)
-        except requests.exceptions.RequestException:
-            pass  # Silently ignore revocation failures
-        finally:
-            self._core_authenticator.invalidate_token()

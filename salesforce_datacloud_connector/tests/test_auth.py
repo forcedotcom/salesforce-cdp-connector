@@ -2,7 +2,6 @@
 Tests for OAuth authentication.
 """
 
-import time
 from unittest.mock import patch
 
 import pytest
@@ -66,46 +65,15 @@ def test_username_password_auth_failure():
 
 
 @responses.activate
-def test_token_caching():
-    """Test that tokens are cached and reused."""
-    responses.add(
-        responses.POST,
-        "https://test.salesforce.com/services/oauth2/token",
-        json={
-            "access_token": "cached_token",
-            "expires_in": 7200,
-            "instance_url": "https://myorg.my.salesforce.com",
-        },
-        status=200,
-    )
-
-    auth = UsernamePasswordAuthenticator(
-        login_url="https://test.salesforce.com",
-        username="test@example.com",
-        password="password123",
-        client_id="client_id",
-        client_secret="client_secret",
-    )
-
-    # First call - should hit the API
-    token1 = auth.get_oauth_token()
-    assert len(responses.calls) == 1
-
-    # Second call - should use cached token
-    token2 = auth.get_oauth_token()
-    assert len(responses.calls) == 1  # No additional API call
-    assert token1 == token2
-
-
-@responses.activate
-def test_token_refresh_before_expiry():
-    """Test that tokens are refreshed before they expire (60s buffer)."""
+def test_token_not_cached_fetches_each_call():
+    """Core tokens are never cached (matches JDBC's getOAuthToken()): each
+    get_oauth_token() call fetches fresh, even back-to-back."""
     responses.add(
         responses.POST,
         "https://test.salesforce.com/services/oauth2/token",
         json={
             "access_token": "token1",
-            "expires_in": 100,  # 100 seconds
+            "expires_in": 7200,
             "instance_url": "https://myorg.my.salesforce.com",
         },
         status=200,
@@ -129,16 +97,15 @@ def test_token_refresh_before_expiry():
         client_secret="client_secret",
     )
 
-    # Get first token
+    # First call - hits the API
     token1 = auth.get_oauth_token()
     assert token1 == "token1"
+    assert len(responses.calls) == 1
 
-    # Simulate time passing (50 seconds - within 60s buffer of expiry)
-    with patch("time.time", return_value=time.time() + 50):
-        token2 = auth.get_oauth_token()
-        # Should get new token because we're within 60s of expiry
-        assert token2 == "token2"
-        assert len(responses.calls) == 2
+    # Second call - fetches again rather than reusing a cache
+    token2 = auth.get_oauth_token()
+    assert token2 == "token2"
+    assert len(responses.calls) == 2
 
 
 @responses.activate
@@ -198,41 +165,6 @@ def test_refresh_token_auth_success():
     assert token == "refresh_access_token"
 
 
-def test_token_invalidation():
-    """Test that token invalidation forces a new fetch."""
-    with responses.RequestsMock() as rsps:
-        rsps.add(
-            responses.POST,
-            "https://test.salesforce.com/services/oauth2/token",
-            json={"access_token": "token1", "expires_in": 7200, "instance_url": "https://myorg.my.salesforce.com"},
-            status=200,
-        )
-        rsps.add(
-            responses.POST,
-            "https://test.salesforce.com/services/oauth2/token",
-            json={"access_token": "token2", "expires_in": 7200, "instance_url": "https://myorg.my.salesforce.com"},
-            status=200,
-        )
-
-        auth = UsernamePasswordAuthenticator(
-            login_url="https://test.salesforce.com",
-            username="test@example.com",
-            password="password123",
-            client_id="client_id",
-            client_secret="client_secret",
-        )
-
-        # Get first token
-        token1 = auth.get_oauth_token()
-        assert token1 == "token1"
-
-        # Invalidate and get new token
-        auth.invalidate_token()
-        token2 = auth.get_oauth_token()
-        assert token2 == "token2"
-        assert len(rsps.calls) == 2
-
-
 @responses.activate
 def test_login_url_trailing_slash():
     """Test that login URL trailing slashes are handled correctly."""
@@ -278,14 +210,15 @@ def test_get_instance_url():
         client_secret="client_secret",
     )
 
-    # Get instance URL should trigger OAuth fetch if not cached
+    # Get instance URL should trigger an OAuth fetch since none has happened yet
     instance_url = auth.get_instance_url()
     assert instance_url == "https://myorg.my.salesforce.com"
+    assert len(responses.calls) == 1
 
-    # Verify token was also cached
+    # get_oauth_token() fetches fresh again (no core-token caching)
     token = auth.get_oauth_token()
     assert token == "test_token"
-    assert len(responses.calls) == 1  # Only one API call
+    assert len(responses.calls) == 2
 
 
 @responses.activate
