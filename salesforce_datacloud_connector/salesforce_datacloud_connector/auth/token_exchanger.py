@@ -207,6 +207,10 @@ class DataCloudTokenExchanger:
         Revoke the core token after successful CDP token exchange.
 
         This matches v1 behavior and improves security by limiting core token lifetime.
+        Also invalidates the core authenticator's own cache: that cache's ~2h TTL
+        outlives the revoked token, so without this a later re-exchange (the CDP
+        token lives ~1h) would pull the same now-revoked token back out of cache
+        and fail the exchange with a 401.
 
         Args:
             instance_url: Salesforce instance URL
@@ -220,3 +224,5 @@ class DataCloudTokenExchanger:
             # Revocation failures are non-fatal (token will expire naturally)
         except requests.exceptions.RequestException:
             pass  # Silently ignore revocation failures
+        finally:
+            self._core_authenticator.invalidate_token()

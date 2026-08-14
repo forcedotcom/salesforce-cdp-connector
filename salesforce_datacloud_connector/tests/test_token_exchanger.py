@@ -248,12 +248,106 @@ def test_cdp_token_invalidation():
         exchanger.invalidate_token()
 
         # Get token again - should trigger a new CDP exchange.
-        # The core authenticator's own token is still cached (expires_in=7200, no time
-        # advance), so it is reused without a second /oauth2/token call. Only the CDP
-        # exchange + core-token revoke fire: exactly 2 additional calls.
+        # The first exchange's revoke also invalidated the core authenticator's own
+        # cache, so it re-fetches a core token rather than reusing the revoked one:
+        # core-token fetch + CDP exchange + core-token revoke = 3 additional calls.
         cdp_token_2 = exchanger.get_cdp_token()
         assert cdp_token_2 == "cdp_token_2"
-        assert len(responses.calls) == first_call_count + 2  # exchange + revoke
+        assert len(responses.calls) == first_call_count + 3  # fetch + exchange + revoke
+
+
+@responses.activate
+def test_core_token_refetched_after_revoke_on_natural_cdp_expiry():
+    """Regression: a revoked core token must not be reused for the next exchange.
+
+    Core tokens live ~2h, CDP tokens ~1h. Around the 1h mark get_cdp_token() must
+    re-exchange, but the core authenticator's own cache (unaware of the revoke)
+    would still consider its ~2h-old token valid. Without invalidating that cache
+    on revoke, this re-exchange would hand the already-revoked core token back to
+    a360, which fails it with 401. Assert the second exchange actually used a
+    freshly fetched core token, not the revoked one.
+    """
+    responses.add(
+        responses.POST,
+        "https://test.salesforce.com/services/oauth2/token",
+        json={
+            "access_token": "core_token_1",
+            "expires_in": 7200,  # ~2h
+            "instance_url": "https://myorg.my.salesforce.com",
+        },
+        status=200,
+    )
+    responses.add(
+        responses.POST,
+        "https://myorg.my.salesforce.com/services/a360/token",
+        json={
+            "access_token": "cdp_token_1",
+            "expires_in": 3600,  # ~1h
+            "instance_url": "https://tenant123.c360a.salesforce.com",
+        },
+        status=200,
+    )
+    responses.add(
+        responses.POST,
+        "https://myorg.my.salesforce.com/services/oauth2/revoke",
+        status=200,
+    )
+
+    with patch("jwt.encode", return_value="mock_jwt"):
+        jwt_auth = JWTAuthenticator(
+            login_url="https://test.salesforce.com",
+            client_id="test_client_id",
+            username="test@example.com",
+            jwt_private_key="-----BEGIN RSA PRIVATE KEY-----\nfake\n-----END RSA PRIVATE KEY-----",
+        )
+
+        exchanger = DataCloudTokenExchanger(
+            core_authenticator=jwt_auth,
+            dataspace="default",
+        )
+
+        cdp_token_1 = exchanger.get_cdp_token()
+        assert cdp_token_1 == "cdp_token_1"
+
+        # Past the CDP token's 60s buffer (expiry 3600s) but well within what the
+        # core authenticator's own cache would consider valid (expiry 7200s) if it
+        # didn't know about the revoke.
+        with patch("time.time", return_value=time.time() + 3600):
+            responses.add(
+                responses.POST,
+                "https://test.salesforce.com/services/oauth2/token",
+                json={
+                    "access_token": "core_token_2",
+                    "expires_in": 7200,
+                    "instance_url": "https://myorg.my.salesforce.com",
+                },
+                status=200,
+            )
+            responses.add(
+                responses.POST,
+                "https://myorg.my.salesforce.com/services/a360/token",
+                json={
+                    "access_token": "cdp_token_2",
+                    "expires_in": 3600,
+                    "instance_url": "https://tenant123.c360a.salesforce.com",
+                },
+                status=200,
+            )
+            responses.add(
+                responses.POST,
+                "https://myorg.my.salesforce.com/services/oauth2/revoke",
+                status=200,
+            )
+
+            cdp_token_2 = exchanger.get_cdp_token()
+            assert cdp_token_2 == "cdp_token_2"
+
+            exchange_calls = [c for c in responses.calls if "/services/a360/token" in c.request.url]
+            assert len(exchange_calls) == 2
+            # The second exchange must carry the freshly fetched core token, not
+            # the one already revoked after the first exchange.
+            assert "core_token_2" in exchange_calls[1].request.url
+            assert "core_token_1" not in exchange_calls[1].request.url
 
 
 @responses.activate
