@@ -201,7 +201,7 @@ def _build_tables_query(
     # The v3 query client sends positional (qmark) parameters, so placeholders
     # must be ? — a :named placeholder makes the server reject the query with
     # "conflicting parameter style 'named' ... set to 'qmark'". Insertion order
-    # (schema before table) matches the positional array _convert_parameters builds.
+    # (schema before table) matches the positional array _bind_parameters builds.
     if schema_pattern:
         sql += " AND n.nspname LIKE ?"
         params["schema_pattern"] = schema_pattern

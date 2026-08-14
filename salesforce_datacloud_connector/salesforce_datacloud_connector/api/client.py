@@ -9,6 +9,7 @@ This module implements the v3 REST transport layer for the Query API:
 - poll_until_complete: blocking poll until a query completes
 """
 
+import json
 import re
 import time
 from typing import Any, Dict, List, Optional, Tuple
@@ -261,7 +262,6 @@ class DataCloudQueryClient:
         if not status_header:
             raise OperationalError("Missing x-hyperdb-status header in query response")
 
-        import json
         status_data = json.loads(status_header)
         query_response.status = QueryStatus.from_dict(status_data)
 
@@ -297,7 +297,6 @@ class DataCloudQueryClient:
         if not status_header:
             raise OperationalError("Missing x-hyperdb-status header in response")
 
-        import json
         status_data = json.loads(status_header)
         return QueryStatus.from_dict(status_data)
 

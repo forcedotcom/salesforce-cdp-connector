@@ -51,7 +51,7 @@ class TestBuildQueries:
         assert ":schema_pattern" not in sql
         assert ":table_name_pattern" not in sql
         # One qmark per filter, in insertion order (schema then table) so the
-        # positional array _convert_parameters builds lines up with the SQL.
+        # positional array _bind_parameters builds lines up with the SQL.
         assert sql.count("?") == 2
         assert list(params.keys()) == ["schema_pattern", "table_name_pattern"]
 
