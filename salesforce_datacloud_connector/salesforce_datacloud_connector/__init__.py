@@ -52,15 +52,22 @@ from .types import BINARY, DATETIME, NUMBER, ROWID, STRING
 # Import and expose metadata structures
 from .metadata import DataCloudTable, Field
 
+# Import and expose query status structure (used by Cursor.get_query_status)
+from .api.models import QueryStatus
+
 # Import connection
 from .connection import Connection
 
 # Import authenticators
 from .auth.oauth import (
+    ClientCredentialsAuthenticator,
     JWTAuthenticator,
     RefreshTokenAuthenticator,
     UsernamePasswordAuthenticator,
 )
+
+# Import token exchanger
+from .auth.token_exchanger import DataCloudTokenExchanger
 
 
 def connect(
@@ -85,7 +92,7 @@ def connect(
     Args:
         login_url: Salesforce login URL (default: "https://login.salesforce.com")
                   Use "https://test.salesforce.com" for sandboxes
-        auth_type: Authentication type - "username_password", "jwt", or "refresh_token"
+        auth_type: Authentication type - "username_password", "jwt", "refresh_token", or "client_credentials"
         username: Salesforce username (required for username_password and jwt)
         password: Salesforce password (required for username_password)
         client_id: Connected app client ID (required for all auth types)
@@ -167,14 +174,31 @@ def connect(
             refresh_token=refresh_token,
         )
 
+    elif auth_type == "client_credentials":
+        if not all([client_id, client_secret]):
+            raise ValueError(
+                "client_credentials auth requires: client_id, client_secret"
+            )
+        authenticator = ClientCredentialsAuthenticator(
+            login_url=login_url,
+            client_id=client_id,
+            client_secret=client_secret,
+        )
+
     else:
         raise ValueError(
             f"Invalid auth_type: {auth_type}. "
-            f"Must be 'username_password', 'jwt', or 'refresh_token'"
+            f"Must be 'username_password', 'jwt', 'refresh_token', or 'client_credentials'"
         )
 
-    # Create and return connection
-    return Connection(authenticator, dataspace=dataspace, workload=workload)
+    # Wrap authenticator in token exchanger for CDP token + tenant endpoint
+    exchanger = DataCloudTokenExchanger(
+        core_authenticator=authenticator,
+        dataspace=dataspace,
+    )
+
+    # Create and return connection with exchanger
+    return Connection(exchanger, dataspace=dataspace, workload=workload)
 
 
 # Public API
@@ -206,11 +230,15 @@ __all__ = [
     # Metadata structures
     "DataCloudTable",
     "Field",
+    # Query status structure
+    "QueryStatus",
     # Authenticators (advanced usage)
     "UsernamePasswordAuthenticator",
     "JWTAuthenticator",
     "RefreshTokenAuthenticator",
+    "ClientCredentialsAuthenticator",
+    "DataCloudTokenExchanger",
 ]
 
 # Package metadata
-__version__ = "0.1.0"
+__version__ = "2.0.0b2"

@@ -198,12 +198,16 @@ def _build_tables_query(
     sql = GET_TABLES_QUERY
     params = {}
 
+    # The v3 query client sends positional (qmark) parameters, so placeholders
+    # must be ? — a :named placeholder makes the server reject the query with
+    # "conflicting parameter style 'named' ... set to 'qmark'". Insertion order
+    # (schema before table) matches the positional array _bind_parameters builds.
     if schema_pattern:
-        sql += " AND n.nspname LIKE :schema_pattern"
+        sql += " AND n.nspname LIKE ?"
         params["schema_pattern"] = schema_pattern
 
     if table_name_pattern:
-        sql += " AND c.relname LIKE :table_name_pattern"
+        sql += " AND c.relname LIKE ?"
         params["table_name_pattern"] = table_name_pattern
 
     if table_types:
@@ -231,12 +235,13 @@ def _build_columns_query(
     sql = GET_COLUMNS_QUERY
     params = {}
 
+    # Positional (qmark) placeholders for v3; see _build_tables_query.
     if schema_pattern:
-        sql += " AND n.nspname LIKE :schema_pattern"
+        sql += " AND n.nspname LIKE ?"
         params["schema_pattern"] = schema_pattern
 
     if table_name_pattern:
-        sql += " AND c.relname LIKE :table_name_pattern"
+        sql += " AND c.relname LIKE ?"
         params["table_name_pattern"] = table_name_pattern
 
     sql += " ORDER BY n.nspname, c.relname, a.attnum"

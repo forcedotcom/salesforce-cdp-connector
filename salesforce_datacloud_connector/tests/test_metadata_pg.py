@@ -31,14 +31,29 @@ class TestBuildQueries:
     def test_build_tables_query_with_schema_filter(self):
         """Test building tables query with schema pattern."""
         sql, params = _build_tables_query("public", None, None)
-        assert "n.nspname LIKE :schema_pattern" in sql
+        # v3 speaks positional (qmark) parameters only, so the placeholder must
+        # be ? rather than a :named placeholder.
+        assert "n.nspname LIKE ?" in sql
         assert params["schema_pattern"] == "public"
 
     def test_build_tables_query_with_table_filter(self):
         """Test building tables query with table name pattern."""
         sql, params = _build_tables_query(None, "Account%", None)
-        assert "c.relname LIKE :table_name_pattern" in sql
+        assert "c.relname LIKE ?" in sql
         assert params["table_name_pattern"] == "Account%"
+
+    def test_build_tables_query_uses_positional_placeholders(self):
+        """Regression: the v3 client sends positional (qmark) parameters, so
+        the generated SQL must never contain :named placeholders. A named
+        placeholder here made the live server reject every catalog query with
+        "conflicting parameter style 'named' ... set to 'qmark'"."""
+        sql, params = _build_tables_query("public", "Account%", None)
+        assert ":schema_pattern" not in sql
+        assert ":table_name_pattern" not in sql
+        # One qmark per filter, in insertion order (schema then table) so the
+        # positional array _bind_parameters builds lines up with the SQL.
+        assert sql.count("?") == 2
+        assert list(params.keys()) == ["schema_pattern", "table_name_pattern"]
 
     def test_build_tables_query_with_type_filter(self):
         """Test building tables query with table types."""
@@ -56,10 +71,16 @@ class TestBuildQueries:
     def test_build_columns_query_with_filters(self):
         """Test building columns query with filters."""
         sql, params = _build_columns_query("public", "Account%")
-        assert "n.nspname LIKE :schema_pattern" in sql
-        assert "c.relname LIKE :table_name_pattern" in sql
+        # v3 positional (qmark) parameters, not :named placeholders.
+        assert "n.nspname LIKE ?" in sql
+        assert "c.relname LIKE ?" in sql
+        assert ":schema_pattern" not in sql
+        assert ":table_name_pattern" not in sql
+        assert sql.count("?") == 2
         assert params["schema_pattern"] == "public"
         assert params["table_name_pattern"] == "Account%"
+        # Insertion order must be schema then table to match the positional array.
+        assert list(params.keys()) == ["schema_pattern", "table_name_pattern"]
 
 
 class TestTypeMapping:

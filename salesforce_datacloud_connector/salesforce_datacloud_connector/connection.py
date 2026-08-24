@@ -7,7 +7,6 @@ The Connection class manages the database connection and creates cursors.
 from typing import List, Optional
 
 from .api.client import DataCloudQueryClient
-from .auth.oauth import OAuthAuthenticator
 from .cursor import Cursor
 from .exceptions import InterfaceError
 from .metadata import DataCloudTable
@@ -23,7 +22,7 @@ class Connection:
 
     def __init__(
         self,
-        authenticator: OAuthAuthenticator,
+        token_provider,  # Type: DataCloudTokenExchanger (import avoided for circular dep)
         dataspace: Optional[str] = None,
         workload: Optional[str] = None,
     ):
@@ -31,22 +30,21 @@ class Connection:
         Initialize connection.
 
         Args:
-            authenticator: OAuth authenticator instance
+            token_provider: DataCloudTokenExchanger instance (wraps core authenticator)
             dataspace: Data space name (default: "default")
             workload: Optional workload name for logging/debugging
 
         Note: Use the connect() factory function instead of instantiating directly.
         """
-        self._authenticator = authenticator
+        self._token_provider = token_provider
         self._dataspace = dataspace
         self._workload = workload
         self._closed = False
 
-        # Create API client
-        # Note: instance_url is obtained from OAuth response, not user input
+        # Create API client with v3 parameters
         self._client = DataCloudQueryClient(
-            instance_url=authenticator.get_instance_url(),
-            auth_token_getter=authenticator.get_oauth_token,
+            tenant_endpoint=token_provider.get_tenant_endpoint(),
+            auth_token_getter=token_provider.get_cdp_token,
             dataspace=dataspace,
             workload=workload,
         )
