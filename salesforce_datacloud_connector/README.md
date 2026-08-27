@@ -326,7 +326,8 @@ This connector follows
 #### Cursor attributes
 
 - `description` — column metadata.
-- `rowcount` — number of rows affected (`-1` for SELECT until exhausted).
+- `rowcount` — total rows in the result set, reported by the server after
+  `execute()` (`-1` before any query is executed).
 - `arraysize` — default fetch size for `fetchmany()`.
 
 ### Exception hierarchy

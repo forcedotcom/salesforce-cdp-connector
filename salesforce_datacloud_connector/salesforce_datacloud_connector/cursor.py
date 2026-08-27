@@ -38,7 +38,7 @@ class Cursor:
         self._total_row_count: int = 0  # Total rows in result set
         self._fetched_rows: int = 0  # Total rows fetched from server
         self._description: Optional[List[Tuple]] = None
-        self._rowcount: int = -1  # DB-API 2.0: -1 for SELECT, else number of rows affected
+        self._rowcount: int = -1
         self._closed: bool = False
         # Latest QueryStatus observed on this cursor — refreshed by execute()
         # and by the polling loop. Returned by get_query_status() without an
@@ -61,13 +61,8 @@ class Cursor:
     @property
     def rowcount(self) -> int:
         """
-        DB-API 2.0 cursor.rowcount attribute.
-
-        For SELECT queries, returns -1 (per DB-API 2.0 spec).
-        For DML queries (not supported in V1), would return affected rows.
-
-        Returns:
-            -1 for SELECT queries
+        Total rows in the result set after execute(), or -1 before any query
+        has been executed (DB-API 2.0).
         """
         return self._rowcount
 
@@ -162,6 +157,8 @@ class Cursor:
         """
         self._check_closed()
 
+        self._rowcount = -1
+
         # Check for unsupported operations (V1 is read-only)
         operation_upper = operation.strip().upper()
         if any(
@@ -180,7 +177,6 @@ class Cursor:
         self._metadata = response.metadata
         self._total_row_count = response.status.row_count
         self._query_status = response.status
-        self._rowcount = -1  # SELECT queries return -1
         self._build_description()
 
         # Handle sync vs async responses
@@ -197,6 +193,8 @@ class Cursor:
 
             # Fetch first chunk
             self._fetch_next_chunk()
+
+        self._rowcount = self._total_row_count
 
         return self
 
