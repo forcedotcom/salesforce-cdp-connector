@@ -40,7 +40,7 @@ still in beta to allow for adjustments based on field feedback.
 ## Features
 
 - **DB-API 2.0 compliant** — standard Python database interface.
-- **Four OAuth flows** — JWT Bearer Token, Refresh Token, Client Credentials, Username/Password.
+- **Five auth flows** — JWT Bearer Token, Refresh Token, Client Credentials, Username/Password, and Salesforce CLI (local/dev).
 - **Pandas integration** — works with `pandas.read_sql()` and
   `cursor.fetch_df()` (under the `[pandas]` extra).
 - **Notebook-ready** — interactive exploration and visualization in Jupyter.
@@ -119,7 +119,7 @@ with sfdc.connect(...) as conn:
 
 ## Authentication
 
-The connector ships four OAuth flows, all driven through `sfdc.connect(...)`
+The connector ships five auth flows, all driven through `sfdc.connect(...)`
 via the `auth_type` keyword.
 
 ### JWT Bearer Token (recommended)
@@ -184,6 +184,36 @@ conn = sfdc.connect(
     client_secret=os.environ["SFDC_CLIENT_SECRET"],
 )
 ```
+
+### Salesforce CLI (recommended for local/dev)
+
+The `sf_cli` flow reuses whatever org the [Salesforce CLI](https://developer.salesforce.com/tools/salesforcecli)
+is already authenticated against — no connected app, client secret, or JWT
+key required. It's the fastest way to point the connector at an org during
+local development:
+
+```bash
+sf org login web --alias my-org --scopes "api cdpquery refresh_token offline_access"
+```
+
+The `--scopes` flag matters: without it, the CLI's session may not carry the
+`cdpquery` scope, and the Data Cloud token exchange fails with
+`invalid_scope`. If it does, re-run `sf org login web` with `--scopes` as
+shown above (add `--instance-url` for sandboxes or non-default pods).
+
+```python
+import salesforce_datacloud_connector as sfdc
+
+conn = sfdc.connect(
+    auth_type="sf_cli",
+    target_org="my-org",  # alias or username; omit to use the CLI's default org
+)
+```
+
+Each call to `sfdc.connect(...)` shells out to `sf org display` and
+`sf org auth show-access-token` to fetch a fresh token — the CLI handles its
+own token refresh, so there's nothing to configure or rotate. Requires the
+`sf` executable to be on `PATH`.
 
 ### Username/Password (deprecated)
 

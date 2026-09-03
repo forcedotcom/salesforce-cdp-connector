@@ -23,10 +23,14 @@ install with `pip install --pre salesforce-datacloud-connector`.
 ### Added
 - DB-API 2.0 compliant driver targeting the Salesforce Data Cloud Query API
   (V3 driver path).
-- Three OAuth authentication flows:
+- Four OAuth authentication flows:
   - Username/Password (`UsernamePasswordAuthenticator`)
   - JWT Bearer Token (`JWTAuthenticator`)
   - Refresh Token (`RefreshTokenAuthenticator`)
+  - Client Credentials (`ClientCredentialsAuthenticator`)
+- Salesforce CLI authenticator (`SfCliAuthenticator`, `auth_type="sf_cli"`) for
+  local/dev — reuses the org the `sf` CLI is already authenticated against
+  instead of requiring a connected app.
 - Connection-level support for `dataspace` and `workload`.
 - Cursor surface: `execute`, `executemany`, `fetchone`, `fetchmany`,
   `fetchall`, iteration, `description`, `rowcount`, `arraysize`, and `cancel`.

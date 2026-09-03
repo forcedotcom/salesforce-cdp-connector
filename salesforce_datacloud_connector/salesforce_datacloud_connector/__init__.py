@@ -63,6 +63,7 @@ from .auth.oauth import (
     ClientCredentialsAuthenticator,
     JWTAuthenticator,
     RefreshTokenAuthenticator,
+    SfCliAuthenticator,
     UsernamePasswordAuthenticator,
 )
 
@@ -79,6 +80,7 @@ def connect(
     client_secret: Optional[str] = None,
     jwt_private_key: Optional[str] = None,
     refresh_token: Optional[str] = None,
+    target_org: Optional[str] = None,
     dataspace: Optional[str] = None,
     workload: Optional[str] = None,
 ) -> Connection:
@@ -92,13 +94,16 @@ def connect(
     Args:
         login_url: Salesforce login URL (default: "https://login.salesforce.com")
                   Use "https://test.salesforce.com" for sandboxes
-        auth_type: Authentication type - "username_password", "jwt", "refresh_token", or "client_credentials"
+        auth_type: Authentication type - "username_password", "jwt", "refresh_token",
+                   "client_credentials", or "sf_cli"
         username: Salesforce username (required for username_password and jwt)
         password: Salesforce password (required for username_password)
-        client_id: Connected app client ID (required for all auth types)
+        client_id: Connected app client ID (required for all auth types except sf_cli)
         client_secret: Connected app client secret (required for username_password and refresh_token)
         jwt_private_key: Private key in PEM format for JWT flow (required for jwt)
         refresh_token: OAuth refresh token (required for refresh_token)
+        target_org: Org alias or username for the sf_cli auth type. If omitted,
+                    the Salesforce CLI's own default org is used.
         dataspace: Data space name (default: "default")
         workload: Optional workload name for logging/debugging
 
@@ -185,10 +190,13 @@ def connect(
             client_secret=client_secret,
         )
 
+    elif auth_type == "sf_cli":
+        authenticator = SfCliAuthenticator(target_org=target_org)
+
     else:
         raise ValueError(
             f"Invalid auth_type: {auth_type}. "
-            f"Must be 'username_password', 'jwt', 'refresh_token', or 'client_credentials'"
+            f"Must be 'username_password', 'jwt', 'refresh_token', 'client_credentials', or 'sf_cli'"
         )
 
     # Wrap authenticator in token exchanger for CDP token + tenant endpoint
@@ -237,6 +245,7 @@ __all__ = [
     "JWTAuthenticator",
     "RefreshTokenAuthenticator",
     "ClientCredentialsAuthenticator",
+    "SfCliAuthenticator",
     "DataCloudTokenExchanger",
 ]
 
