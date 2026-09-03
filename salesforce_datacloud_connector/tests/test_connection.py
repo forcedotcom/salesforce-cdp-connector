@@ -251,3 +251,30 @@ def test_connect_client_credentials_requires_secret():
             client_id="test_client_id",
             # client_secret intentionally omitted
         )
+
+
+def test_connect_wires_sf_cli():
+    """connect(auth_type='sf_cli') composes SfCliAuthenticator → DataCloudTokenExchanger
+    → Connection, with no connected-app credentials required (local/dev flow)."""
+    from unittest.mock import patch
+    import salesforce_datacloud_connector as sfdc
+    from salesforce_datacloud_connector.auth.token_exchanger import DataCloudTokenExchanger
+    from salesforce_datacloud_connector.auth.oauth import SfCliAuthenticator
+
+    with patch.object(SfCliAuthenticator, '_fetch_new_token', return_value=("core_token", 7200, "https://test.salesforce.com")), \
+         patch.object(DataCloudTokenExchanger, '_exchange_token', return_value=("cdp_token", 7200, "https://tenant.c360a.salesforce.com")):
+            conn = sfdc.connect(
+                auth_type="sf_cli",
+                target_org="my-alias",
+                dataspace="test_ds",
+                workload="test_workload",
+            )
+
+            assert conn is not None
+            assert isinstance(conn, sfdc.Connection)
+            authenticator = conn._token_provider._core_authenticator
+            assert isinstance(authenticator, SfCliAuthenticator)
+            assert authenticator.target_org == "my-alias"
+            assert conn._client.tenant_endpoint == "https://tenant.c360a.salesforce.com"
+
+            conn.close()

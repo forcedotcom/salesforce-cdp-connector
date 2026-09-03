@@ -12,6 +12,9 @@ the JDBC driver's DataCloudTokenProvider.
 
 from __future__ import annotations
 
+import json
+import os
+import subprocess
 import time
 from abc import ABC, abstractmethod
 from typing import Optional
@@ -371,3 +374,82 @@ class ClientCredentialsAuthenticator(OAuthAuthenticator):
             raise OperationalError(
                 f"Authentication failed with client credentials: {e}"
             ) from e
+
+
+class SfCliAuthenticator(OAuthAuthenticator):
+    """
+    Authenticates using the locally installed Salesforce CLI (`sf`).
+
+    Intended for local development: reuses whatever org the Salesforce CLI is
+    already authenticated against (e.g. via `sf org login web`) instead of
+    requiring a connected app's client_id/secret or a JWT key. Every call
+    re-invokes the CLI, which transparently refreshes its own stored token if
+    needed — this matches the no-cache model of the other authenticators.
+
+    Recent CLI versions redact `accessToken` from `sf org display` output, so
+    the token and instance URL are fetched from two separate subcommands.
+    """
+
+    def __init__(self, target_org: Optional[str] = None, cli_path: str = "sf"):
+        """
+        Initialize the Salesforce CLI authenticator.
+
+        Args:
+            target_org: Org alias or username to pass as `--target-org` to
+                        the CLI. If omitted, the CLI's own default org applies.
+            cli_path: Path to the Salesforce CLI executable (default: "sf")
+        """
+        super().__init__()
+        self.target_org = target_org
+        self.cli_path = cli_path
+
+    def _run_sf(self, *args: str) -> dict:
+        """Run an `sf` subcommand with --json and return its parsed payload."""
+        command = [self.cli_path, *args, "--json"]
+        if self.target_org:
+            command += ["--target-org", self.target_org]
+
+        # --json output must stay plain: if the caller's shell forces color
+        # (e.g. FORCE_COLOR set), the CLI emits ANSI codes even with --json,
+        # which breaks JSON parsing. NO_COLOR overrides that.
+        env = {**os.environ, "NO_COLOR": "1"}
+
+        try:
+            result = subprocess.run(
+                command, capture_output=True, text=True, timeout=30, env=env
+            )
+        except FileNotFoundError as e:
+            raise OperationalError(
+                f"Salesforce CLI ('{self.cli_path}') not found. Install it from "
+                "https://developer.salesforce.com/tools/salesforcecli and authenticate "
+                "with `sf org login web` before using SfCliAuthenticator."
+            ) from e
+        except subprocess.TimeoutExpired as e:
+            raise OperationalError(f"Salesforce CLI command timed out: {' '.join(command)}") from e
+
+        try:
+            payload = json.loads(result.stdout)
+        except json.JSONDecodeError as e:
+            raise OperationalError(
+                f"Could not parse output of `{' '.join(command)}`: {e}"
+            ) from e
+
+        if payload.get("status") != 0:
+            message = payload.get("message", "Unknown error from Salesforce CLI")
+            raise OperationalError(f"Salesforce CLI authentication failed: {message}")
+
+        return payload.get("result", {})
+
+    def _fetch_new_token(self) -> tuple[str, int, str]:
+        """Fetch a core token and instance URL via the Salesforce CLI."""
+        org_info = self._run_sf("org", "display")
+        instance_url = org_info.get("instanceUrl")
+        if not instance_url:
+            raise OperationalError("No instanceUrl in `sf org display` output")
+
+        token_info = self._run_sf("org", "auth", "show-access-token")
+        access_token = token_info.get("accessToken")
+        if not access_token:
+            raise OperationalError("No accessToken in `sf org auth show-access-token` output")
+
+        return access_token, 7200, instance_url
