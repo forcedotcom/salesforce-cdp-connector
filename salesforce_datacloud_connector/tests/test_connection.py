@@ -9,6 +9,7 @@ import pytest
 from salesforce_datacloud_connector.connection import Connection
 from salesforce_datacloud_connector.cursor import Cursor
 from salesforce_datacloud_connector.exceptions import InterfaceError
+from tests._concurrency_helpers import run_concurrently
 
 
 def create_mock_token_provider():
@@ -251,3 +252,62 @@ def test_connect_client_credentials_requires_secret():
             client_id="test_client_id",
             # client_secret intentionally omitted
         )
+
+
+# ---------------------------------------------------------------------------
+# Concurrency: one Connection shared across threads (threadsafety=2).
+#
+# Cursors are thread-CONFINED, but creating them from a shared Connection must
+# be safe: cursor() must hand every thread its own distinct Cursor bound to the
+# one shared client, and the benign close()/cursor() race must never corrupt
+# state. These characterize the connection's existing safety so the
+# threadsafety=2 promise has a regression guard.
+# ---------------------------------------------------------------------------
+
+
+def test_concurrent_cursor_creation_returns_distinct_cursors():
+    """N threads calling cursor() on one shared Connection each get a distinct
+    Cursor object, all bound to the connection's single shared client."""
+    conn = Connection(create_mock_token_provider())
+    parties = 16
+
+    def worker(_i):
+        return conn.cursor()
+
+    results, errors = run_concurrently(worker, parties)
+
+    assert errors == []
+    assert all(isinstance(c, Cursor) for c in results)
+    # Every cursor is a distinct object...
+    assert len({id(c) for c in results}) == parties
+    # ...yet all share the connection's one client instance.
+    assert all(c._client is conn._client for c in results)
+
+
+def test_concurrent_close_and_cursor_race_is_benign():
+    """Threads racing cursor() against close() never raise anything other than
+    the documented InterfaceError, and the connection ends up closed."""
+    conn = Connection(create_mock_token_provider())
+    parties = 16
+
+    def worker(i):
+        if i % 4 == 0:
+            conn.close()
+            return "closed"
+        try:
+            return conn.cursor()
+        except InterfaceError:
+            # Legal outcome: connection was closed by a racing thread.
+            return "interface_error"
+
+    results, errors = run_concurrently(worker, parties)
+
+    # No unexpected exception type escaped — only the documented InterfaceError,
+    # which workers convert to a sentinel. Any other raise would appear here.
+    assert errors == []
+    assert conn.closed
+    # Every result is one of the three legal outcomes.
+    assert all(
+        r == "closed" or r == "interface_error" or isinstance(r, Cursor)
+        for r in results
+    )
