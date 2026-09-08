@@ -5,6 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## 2.0.0b2 — Beta release (TBD)
+
+### Changed
+- Raised DB-API 2.0 `threadsafety` from `1` to `2`: threads may now share a
+  single `Connection` (and its cursor factory), not just the module. This
+  reaches parity with the legacy v1 driver. Cursors remain thread-confined and
+  must not be shared across threads.
+
+### Fixed
+- Connection-shared authentication state is now thread-safe. The core
+  authenticator publishes its `instance_url` and pairs `(access_token,
+  instance_url)` atomically from a single fetch, and the CDP token exchanger
+  caches the token, its expiry, and the tenant endpoint as one immutable
+  snapshot published atomically under a lock (double-checked locking). Cold-miss
+  fetches/exchanges are single-flighted, so N racing threads trigger one fetch
+  rather than a thundering herd, and a reader can never observe a token paired
+  with a mismatched endpoint.
+- `DataCloudTokenExchanger.invalidate_token()` now clears the tenant endpoint
+  along with the token and expiry, so a subsequent `get_tenant_endpoint()`
+  re-exchanges instead of returning a stale endpoint.
+
 ## 2.0.0b1 — Beta release (TBD)
 
 First public beta of the new `salesforce-datacloud-connector` package, the
