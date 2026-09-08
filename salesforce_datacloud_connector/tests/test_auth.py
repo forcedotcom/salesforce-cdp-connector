@@ -2,6 +2,7 @@
 Tests for OAuth authentication.
 """
 
+import threading
 from unittest.mock import patch
 
 import pytest
@@ -13,6 +14,7 @@ from salesforce_datacloud_connector.auth.oauth import (
     UsernamePasswordAuthenticator,
 )
 from salesforce_datacloud_connector.exceptions import OperationalError
+from tests._concurrency_helpers import ConcurrencyGate
 
 
 @responses.activate
@@ -301,3 +303,80 @@ def test_client_credentials_auth_failure():
 
     with pytest.raises(OperationalError):
         auth.get_oauth_token()
+
+
+# ---------------------------------------------------------------------------
+# Concurrency (threadsafety=2): a single authenticator shared across threads.
+# ---------------------------------------------------------------------------
+
+
+def _make_username_authenticator():
+    return UsernamePasswordAuthenticator(
+        login_url="https://test.salesforce.com",
+        username="test@example.com",
+        password="password123",
+        client_id="client_id",
+        client_secret="client_secret",
+    )
+
+
+def test_concurrent_get_instance_url_fetches_exactly_once():
+    """N threads calling get_instance_url() on a cold authenticator must trigger
+    exactly ONE token fetch. instance_url is stable org metadata; the unlocked
+    check-then-fetch admits every caller (thundering herd), so this fails until
+    get_instance_url() dedups the cold miss under a lock (double-checked)."""
+    auth = _make_username_authenticator()
+    parties = 8
+    gate = ConcurrencyGate()
+
+    def fake_fetch():
+        gate.enter()  # counts every caller that reaches the fetch
+        return ("token", 7200, "https://myorg.my.salesforce.com")
+
+    def worker(_i):
+        return auth.get_instance_url()
+
+    with patch.object(auth, "_fetch_new_token", side_effect=fake_fetch):
+        results, errors = gate.run(worker, parties)
+
+    assert errors == []
+    assert all(r == "https://myorg.my.salesforce.com" for r in results)
+    assert gate.entered == 1  # deduplicated: only one thread fetched
+    assert gate.max_concurrent == 1
+
+
+def test_get_oauth_token_and_instance_url_returns_matched_pair_under_concurrency():
+    """get_oauth_token_and_instance_url() must return a (token, instance_url)
+    pair drawn from the SAME fetch. Composing get_oauth_token() +
+    get_instance_url() as two separate calls could pair one thread's token with
+    another thread's instance_url; the atomic pair method must never mismatch.
+
+    Each fetch here returns a distinct token whose org number is embedded in
+    both the token and its instance_url, so any cross-fetch pairing is caught."""
+    auth = _make_username_authenticator()
+    parties = 16
+    gate = ConcurrencyGate()
+    counter = {"n": 0}
+    counter_lock = threading.Lock()
+
+    def fake_fetch():
+        with counter_lock:
+            counter["n"] += 1
+            n = counter["n"]
+        gate.enter()  # hold all callers together so fetches genuinely overlap
+        return (f"token{n}", 7200, f"https://org{n}.my.salesforce.com")
+
+    def worker(_i):
+        return auth.get_oauth_token_and_instance_url()
+
+    with patch.object(auth, "_fetch_new_token", side_effect=fake_fetch):
+        results, errors = gate.run(worker, parties)
+
+    assert errors == []
+    # Core tokens are never cached: every caller performs its own fresh fetch.
+    assert gate.entered == parties
+    assert gate.max_concurrent == parties
+    # Every returned pair is internally consistent — url matches its own token.
+    for token, url in results:
+        n = token[len("token"):]
+        assert url == f"https://org{n}.my.salesforce.com"
