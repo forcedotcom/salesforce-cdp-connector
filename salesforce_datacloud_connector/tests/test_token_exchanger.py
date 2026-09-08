@@ -2,6 +2,7 @@
 Tests for DataCloudTokenExchanger (core token → CDP token exchange).
 """
 
+import threading
 import time
 from unittest.mock import patch
 
@@ -11,6 +12,7 @@ import responses
 from salesforce_datacloud_connector.auth.oauth import JWTAuthenticator
 from salesforce_datacloud_connector.auth.token_exchanger import DataCloudTokenExchanger
 from salesforce_datacloud_connector.exceptions import OperationalError
+from tests._concurrency_helpers import ConcurrencyGate
 
 
 @responses.activate
@@ -647,3 +649,105 @@ def test_client_credentials_token_exchange_success():
     assert "/services/oauth2/token" in responses.calls[0].request.url  # Core token
     assert "grant_type=client_credentials" in responses.calls[0].request.body
     assert "/services/a360/token" in responses.calls[1].request.url  # Exchange
+
+
+# ---------------------------------------------------------------------------
+# Concurrency (threadsafety=2): one exchanger shared across threads.
+#
+# The CDP token + tenant endpoint are org-scoped, cacheable state. On a cold
+# miss, N racing get_cdp_token()/get_tenant_endpoint() callers must dedup to a
+# single exchange rather than each firing their own (thundering herd), and the
+# token and its tenant endpoint must always come from the SAME exchange so a
+# reader never pairs one exchange's token with another's endpoint.
+# ---------------------------------------------------------------------------
+
+
+def _make_cold_exchanger(dataspace="default"):
+    """A DataCloudTokenExchanger over a JWT authenticator with no network wired.
+    Callers patch _fetch_new_token / _exchange_token to drive it deterministically."""
+    with patch("jwt.encode", return_value="mock_jwt"):
+        jwt_auth = JWTAuthenticator(
+            login_url="https://test.salesforce.com",
+            client_id="test_client_id",
+            username="test@example.com",
+            jwt_private_key="-----BEGIN RSA PRIVATE KEY-----\nfake\n-----END RSA PRIVATE KEY-----",
+        )
+    return DataCloudTokenExchanger(core_authenticator=jwt_auth, dataspace=dataspace)
+
+
+def test_concurrent_get_cdp_token_exchanges_exactly_once():
+    """N threads calling get_cdp_token() on a cold exchanger must trigger exactly
+    ONE token exchange. The CDP token is cacheable org-scoped state; today's
+    unlocked check-then-exchange admits every caller (thundering herd), so this
+    fails until get_cdp_token() single-flights the cold miss under a lock
+    (double-checked locking)."""
+    exchanger = _make_cold_exchanger()
+    parties = 8
+    gate = ConcurrencyGate()
+
+    def fake_fetch():
+        # Core token fetch is cheap and un-gated; only the exchange is counted.
+        return ("core_token", 7200, "https://myorg.my.salesforce.com")
+
+    def fake_exchange(instance_url, core_token):
+        gate.enter()  # counts every caller that reaches the exchange
+        return ("cdp_token", 3600, "https://tenant123.c360a.salesforce.com")
+
+    def worker(_i):
+        return exchanger.get_cdp_token()
+
+    with patch.object(
+        exchanger._core_authenticator, "_fetch_new_token", side_effect=fake_fetch
+    ), patch.object(exchanger, "_exchange_token", side_effect=fake_exchange):
+        results, errors = gate.run(worker, parties)
+
+    assert errors == []
+    assert all(r == "cdp_token" for r in results)
+    assert gate.entered == 1  # deduplicated: only one thread exchanged
+    assert gate.max_concurrent == 1
+
+
+def test_concurrent_cdp_token_and_tenant_endpoint_derive_from_one_exchange():
+    """get_cdp_token() and get_tenant_endpoint() racing on a cold exchanger must
+    still perform exactly ONE exchange, and every returned (token, endpoint) must
+    come from that same exchange — never a torn pair drawn from two exchanges.
+
+    Each exchange embeds a distinct number in both its token and its endpoint, so
+    any cross-exchange pairing (or a second exchange) is caught."""
+    exchanger = _make_cold_exchanger()
+    parties = 16
+    gate = ConcurrencyGate()
+    counter = {"n": 0}
+    counter_lock = threading.Lock()
+
+    def fake_fetch():
+        return ("core_token", 7200, "https://myorg.my.salesforce.com")
+
+    def fake_exchange(instance_url, core_token):
+        with counter_lock:
+            counter["n"] += 1
+            n = counter["n"]
+        gate.enter()  # hold callers together so overlapping exchanges are exposed
+        return (f"cdp_token{n}", 3600, f"https://tenant{n}.c360a.salesforce.com")
+
+    def worker(i):
+        # Half the threads read the token, half read the endpoint — both must be
+        # served from the same single exchange.
+        if i % 2 == 0:
+            return ("token", exchanger.get_cdp_token())
+        return ("endpoint", exchanger.get_tenant_endpoint())
+
+    with patch.object(
+        exchanger._core_authenticator, "_fetch_new_token", side_effect=fake_fetch
+    ), patch.object(exchanger, "_exchange_token", side_effect=fake_exchange):
+        results, errors = gate.run(worker, parties)
+
+    assert errors == []
+    # Exactly one exchange happened despite the cold-miss stampede.
+    assert gate.entered == 1
+    assert gate.max_concurrent == 1
+    # The single exchange was #1, so every reader sees that exchange's values.
+    tokens = {v for kind, v in results if kind == "token"}
+    endpoints = {v for kind, v in results if kind == "endpoint"}
+    assert tokens == {"cdp_token1"}
+    assert endpoints == {"https://tenant1.c360a.salesforce.com"}

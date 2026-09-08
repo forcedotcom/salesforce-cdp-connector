@@ -7,13 +7,21 @@ Data Cloud (CDP) tokens via the /services/a360/token endpoint.
 
 from __future__ import annotations
 
+import threading
 import time
+from collections import namedtuple
 from typing import Optional
 
 import requests
 
 from ..exceptions import OperationalError
 from .oauth import OAuthAuthenticator
+
+# Immutable snapshot of the three values a single CDP exchange produces. Bundling
+# them into one namedtuple lets us publish them with a single atomic reference
+# assignment (self._cache = _CdpTokenCache(...)), so a reader can never observe a
+# token from one exchange paired with a tenant endpoint from another (torn read).
+_CdpTokenCache = namedtuple("_CdpTokenCache", ["token", "expiry", "tenant_endpoint"])
 
 
 class DataCloudTokenExchanger:
@@ -48,9 +56,64 @@ class DataCloudTokenExchanger:
         """
         self._core_authenticator = core_authenticator
         self._dataspace = dataspace
-        self._cached_cdp_token: Optional[str] = None
-        self._token_expiry: Optional[float] = None
-        self._tenant_endpoint: Optional[str] = None
+        # Single atomic reference to the current cache snapshot (None = cold).
+        # Publishing a fresh _CdpTokenCache in one assignment keeps token, expiry
+        # and tenant_endpoint mutually consistent for every reader.
+        self._cache: Optional[_CdpTokenCache] = None
+        # Guards the cold-miss / expiry re-exchange so a shared exchanger is safe
+        # across threads (threadsafety=2): N racing misses do ONE exchange, not a
+        # thundering herd.
+        self._lock = threading.Lock()
+
+    def _ensure_cache(self) -> _CdpTokenCache:
+        """
+        Return a live CDP cache snapshot, exchanging a new one if needed.
+
+        Uses double-checked locking: the common hit takes the unlocked fast path;
+        only an apparent miss acquires the lock, then re-checks so a single thread
+        performs the exchange while the others reuse its freshly published snapshot
+        (rather than each firing their own — the pre-lock thundering herd).
+
+        Liveness mirrors JDBC's DataCloudToken.isAlive(): a snapshot is alive while
+        current_time <= expiry, with no refresh buffer. The (potentially slow) core
+        fetch + exchange run under the lock so concurrent cold callers dedup to one
+        network round-trip.
+
+        Returns:
+            A live _CdpTokenCache snapshot
+
+        Raises:
+            OperationalError: If token exchange fails
+        """
+        # Fast path: a live snapshot needs no lock.
+        snapshot = self._cache
+        if snapshot is not None and time.time() <= snapshot.expiry:
+            return snapshot
+
+        with self._lock:
+            # Re-check under the lock — another thread may have exchanged while we
+            # waited, in which case we reuse its snapshot instead of exchanging.
+            snapshot = self._cache
+            if snapshot is not None and time.time() <= snapshot.expiry:
+                return snapshot
+
+            # Fetch a fresh core token paired with its instance URL from ONE fetch
+            # (the core authenticator never caches), then exchange for a CDP token.
+            core_token, instance_url = (
+                self._core_authenticator.get_oauth_token_and_instance_url()
+            )
+            cdp_token, expires_in, tenant_endpoint = self._exchange_token(
+                instance_url, core_token
+            )
+
+            # Publish the whole snapshot atomically in one reference assignment.
+            snapshot = _CdpTokenCache(
+                token=cdp_token,
+                expiry=time.time() + expires_in,
+                tenant_endpoint=tenant_endpoint,
+            )
+            self._cache = snapshot
+            return snapshot
 
     def get_cdp_token(self) -> str:
         """
@@ -66,37 +129,16 @@ class DataCloudTokenExchanger:
         Raises:
             OperationalError: If token exchange fails
         """
-        current_time = time.time()
-
-        # Check cache — alive until exact expiry, no buffer.
-        if (
-            self._cached_cdp_token is not None
-            and self._token_expiry is not None
-            and current_time <= self._token_expiry
-        ):
-            return self._cached_cdp_token
-
-        # Exchange a fresh core token for a CDP token
-        core_token = self._core_authenticator.get_oauth_token()
-        instance_url = self._core_authenticator.get_instance_url()
-
-        cdp_token, expires_in, tenant_endpoint = self._exchange_token(
-            instance_url, core_token
-        )
-
-        # Cache CDP token
-        self._cached_cdp_token = cdp_token
-        self._token_expiry = current_time + expires_in
-        self._tenant_endpoint = tenant_endpoint
-
-        return cdp_token
+        return self._ensure_cache().token
 
     def get_tenant_endpoint(self) -> str:
         """
         Get the Data Cloud tenant endpoint URL.
 
         The tenant endpoint is returned by the CDP token exchange and is used
-        as the base URL for all off-core v3 API calls.
+        as the base URL for all off-core v3 API calls. It is drawn from the SAME
+        snapshot as the CDP token, so the two can never come from different
+        exchanges.
 
         Returns:
             Data Cloud tenant endpoint (e.g., "https://{tenant}.c360a.salesforce.com")
@@ -104,23 +146,23 @@ class DataCloudTokenExchanger:
         Raises:
             OperationalError: If no token exchange has occurred yet
         """
-        if self._tenant_endpoint is None:
-            # Trigger exchange to get tenant endpoint
-            self.get_cdp_token()
-
-        if self._tenant_endpoint is None:
+        tenant_endpoint = self._ensure_cache().tenant_endpoint
+        if tenant_endpoint is None:
             raise OperationalError("Tenant endpoint not available from CDP token exchange")
-
-        return self._tenant_endpoint
+        return tenant_endpoint
 
     def invalidate_token(self):
         """
         Invalidate the cached CDP token, forcing a re-exchange on next request.
 
+        Clears the whole snapshot atomically (token, expiry AND tenant_endpoint),
+        so a subsequent get_tenant_endpoint() re-exchanges rather than returning a
+        stale endpoint.
+
         Note: This does NOT invalidate the core authenticator's token.
         """
-        self._cached_cdp_token = None
-        self._token_expiry = None
+        with self._lock:
+            self._cache = None
 
     def _exchange_token(
         self, instance_url: str, core_token: str
