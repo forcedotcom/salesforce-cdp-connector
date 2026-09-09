@@ -253,6 +253,37 @@ def test_connect_client_credentials_requires_secret():
         )
 
 
+def test_connect_positional_args_backward_compatible():
+    """connect()'s pre-target_org positional parameter order (…, dataspace,
+    workload) must still bind correctly — target_org must not shift dataspace
+    and workload out of their original positions for existing positional
+    callers."""
+    from unittest.mock import patch
+    import salesforce_datacloud_connector as sfdc
+    from salesforce_datacloud_connector.auth.token_exchanger import DataCloudTokenExchanger
+    from salesforce_datacloud_connector.auth.oauth import ClientCredentialsAuthenticator
+
+    with patch.object(ClientCredentialsAuthenticator, '_fetch_new_token', return_value=("core_token", 7200, "https://test.salesforce.com")), \
+         patch.object(DataCloudTokenExchanger, '_exchange_token', return_value=("cdp_token", 7200, "https://tenant.c360a.salesforce.com")):
+            conn = sfdc.connect(
+                "https://login.salesforce.com",  # login_url
+                "client_credentials",  # auth_type
+                None,  # username
+                None,  # password
+                "test_client_id",  # client_id
+                "test_client_secret",  # client_secret
+                None,  # jwt_private_key
+                None,  # refresh_token
+                "test_ds",  # dataspace
+                "test_workload",  # workload
+            )
+
+            assert conn.dataspace == "test_ds"
+            assert conn.workload == "test_workload"
+
+            conn.close()
+
+
 def test_connect_wires_sf_cli():
     """connect(auth_type='sf_cli') composes SfCliAuthenticator → DataCloudTokenExchanger
     → Connection, with no connected-app credentials required (local/dev flow)."""

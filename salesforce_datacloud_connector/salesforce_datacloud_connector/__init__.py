@@ -80,9 +80,9 @@ def connect(
     client_secret: Optional[str] = None,
     jwt_private_key: Optional[str] = None,
     refresh_token: Optional[str] = None,
-    target_org: Optional[str] = None,
     dataspace: Optional[str] = None,
     workload: Optional[str] = None,
+    target_org: Optional[str] = None,
 ) -> Connection:
     """
     Create a connection to Salesforce Data Cloud.
@@ -102,10 +102,10 @@ def connect(
         client_secret: Connected app client secret (required for username_password and refresh_token)
         jwt_private_key: Private key in PEM format for JWT flow (required for jwt)
         refresh_token: OAuth refresh token (required for refresh_token)
-        target_org: Org alias or username for the sf_cli auth type. If omitted,
-                    the Salesforce CLI's own default org is used.
         dataspace: Data space name (default: "default")
         workload: Optional workload name for logging/debugging
+        target_org: Org alias or username for the sf_cli auth type. If omitted,
+                    the Salesforce CLI's own default org is used.
 
     Returns:
         Connection instance
