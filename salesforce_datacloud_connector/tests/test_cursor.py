@@ -25,10 +25,179 @@ def test_cursor_description_before_execute():
     assert cursor.description is None
 
 
-def test_cursor_rowcount():
-    """Test that rowcount returns -1 for SELECT queries."""
+def test_cursor_rowcount_before_execute():
+    """Before any execute(), rowcount is -1 per DB-API 2.0."""
     client = create_mock_client()
     cursor = Cursor(client)
+
+    assert cursor.rowcount == -1
+
+
+def test_rowcount_after_sync_execute():
+    """After a synchronous execute(), rowcount reports the server row count."""
+    client = create_mock_client()
+    cursor = Cursor(client)
+
+    client.execute_query.return_value = QueryResponse(
+        data=[["Alice", 30], ["Bob", 25]],
+        metadata=[
+            ColumnMetadata(name="name", type="Varchar"),
+            ColumnMetadata(name="age", type="Numeric", scale=0),
+        ],
+        returned_rows=2,
+        status=QueryStatus(
+            query_id="q1",
+            completion_status="ResultsProduced",
+            progress=1.0,
+            row_count=2,
+            chunk_count=1,
+        ),
+    )
+
+    cursor.execute("SELECT name, age FROM users")
+
+    assert cursor.rowcount == 2
+
+
+def test_rowcount_after_async_execute():
+    """After an async execute(), rowcount reflects the final polled row count."""
+    client = create_mock_client()
+    cursor = Cursor(client)
+
+    client.execute_query.return_value = QueryResponse(
+        data=[],
+        metadata=[ColumnMetadata(name="name", type="Varchar")],
+        returned_rows=0,
+        status=QueryStatus(
+            query_id="q1",
+            completion_status="Running",
+            progress=0.5,
+            row_count=0,
+            chunk_count=0,
+        ),
+    )
+    client.poll_until_complete.return_value = QueryStatus(
+        query_id="q1",
+        completion_status="Finished",
+        progress=1.0,
+        row_count=100,
+        chunk_count=1,
+    )
+    client.fetch_results.return_value = QueryResponse(
+        data=[["Alice"], ["Bob"]],
+        metadata=[],
+        returned_rows=2,
+    )
+
+    cursor.execute("SELECT name FROM large_table")
+
+    assert cursor.rowcount == 100
+
+
+def test_rowcount_empty_result():
+    """A query that produces zero rows reports rowcount 0, not -1."""
+    client = create_mock_client()
+    cursor = Cursor(client)
+
+    client.execute_query.return_value = QueryResponse(
+        data=[],
+        metadata=[ColumnMetadata(name="name", type="Varchar")],
+        returned_rows=0,
+        status=QueryStatus(
+            query_id="q1",
+            completion_status="ResultsProduced",
+            progress=1.0,
+            row_count=0,
+            chunk_count=0,
+        ),
+    )
+
+    cursor.execute("SELECT name FROM users WHERE 1=0")
+
+    assert cursor.rowcount == 0
+
+
+def test_rowcount_matches_total_across_pagination():
+    """rowcount is the full total up front, even before paginated chunks are fetched."""
+    client = create_mock_client()
+    cursor = Cursor(client)
+
+    client.execute_query.return_value = QueryResponse(
+        data=[["Row1"], ["Row2"]],
+        metadata=[ColumnMetadata(name="data", type="Varchar")],
+        returned_rows=2,
+        status=QueryStatus(
+            query_id="q1",
+            completion_status="ResultsProduced",
+            progress=1.0,
+            row_count=4,
+            chunk_count=2,
+        ),
+    )
+    client.fetch_results.return_value = QueryResponse(
+        data=[["Row3"], ["Row4"]],
+        metadata=[],
+        returned_rows=2,
+    )
+
+    cursor.execute("SELECT data FROM table")
+
+    assert cursor.rowcount == 4
+    assert len(cursor.fetchall()) == 4
+    assert cursor.rowcount == 4
+
+
+def test_rowcount_reset_after_failed_reexecute_dml_guard():
+    """A failed re-execute (DML guard) resets rowcount to -1, not the prior total."""
+    client = create_mock_client()
+    cursor = Cursor(client)
+
+    client.execute_query.return_value = QueryResponse(
+        data=[["Alice"], ["Bob"]],
+        metadata=[ColumnMetadata(name="name", type="Varchar")],
+        returned_rows=2,
+        status=QueryStatus(
+            query_id="q1",
+            completion_status="ResultsProduced",
+            progress=1.0,
+            row_count=5,
+            chunk_count=1,
+        ),
+    )
+
+    cursor.execute("SELECT name FROM users")
+    assert cursor.rowcount == 5
+
+    with pytest.raises(NotSupportedError):
+        cursor.execute("INSERT INTO users VALUES (1, 'x')")
+
+    assert cursor.rowcount == -1
+
+
+def test_rowcount_reset_after_failed_reexecute_server_error():
+    """A failed re-execute (execute_query raising) resets rowcount to -1."""
+    client = create_mock_client()
+    cursor = Cursor(client)
+
+    client.execute_query.return_value = QueryResponse(
+        data=[["Alice"]],
+        metadata=[ColumnMetadata(name="name", type="Varchar")],
+        returned_rows=1,
+        status=QueryStatus(
+            query_id="q1",
+            completion_status="ResultsProduced",
+            progress=1.0,
+            row_count=1,
+            chunk_count=1,
+        ),
+    )
+
+    cursor.execute("SELECT name FROM users")
+    assert cursor.rowcount == 1
+
+    client.execute_query.side_effect = InterfaceError("boom")
+    with pytest.raises(InterfaceError):
+        cursor.execute("SELECT bad syntax")
 
     assert cursor.rowcount == -1
 

@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+- `cursor.rowcount` now reports the total number of rows in the result set
+  after `execute()`, as read from the server's query status, instead of always
+  returning `-1`. It remains `-1` before any query is executed and is reset to
+  `-1` at the start of each `execute()` so a failed execution does not report a
+  stale count (DB-API 2.0 / PEP 249).
+
 ## 2.0.0b1 — Beta release (TBD)
 
 First public beta of the new `salesforce-datacloud-connector` package, the
