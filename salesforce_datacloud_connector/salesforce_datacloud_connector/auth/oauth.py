@@ -12,9 +12,10 @@ the JDBC driver's DataCloudTokenProvider.
 
 from __future__ import annotations
 
+import threading
 import time
 from abc import ABC, abstractmethod
-from typing import Optional
+from typing import Optional, Tuple
 
 import jwt
 import requests
@@ -40,6 +41,10 @@ class OAuthAuthenticator(ABC):
         """
         self.login_url = login_url.rstrip("/")
         self._instance_url: Optional[str] = None
+        # Guards publication of self._instance_url and single-flights the
+        # cold-miss fetch in get_instance_url() so one shared authenticator is
+        # safe to use from multiple threads (threadsafety=2).
+        self._lock = threading.Lock()
 
     @abstractmethod
     def _fetch_new_token(self) -> tuple[str, int, str]:
@@ -54,6 +59,34 @@ class OAuthAuthenticator(ABC):
         """
         pass
 
+    def get_oauth_token_and_instance_url(self) -> Tuple[str, str]:
+        """
+        Fetch a fresh core token and return it paired with its instance URL.
+
+        Both values come from the SAME fetch, so a caller never pairs one
+        fetch's token with another fetch's instance URL — the mismatch that a
+        shared authenticator would otherwise expose when get_oauth_token() and
+        get_instance_url() are called separately by racing threads.
+
+        The (potentially slow) HTTP fetch runs OUTSIDE the lock so concurrent
+        callers do not serialize on the network round-trip; only the tiny
+        publication of self._instance_url is guarded, keeping get_instance_url()
+        readers consistent.
+
+        Matches the JDBC driver's DataCloudTokenProvider.getOAuthToken(): the
+        core token is always fetched fresh (never cached).
+
+        Returns:
+            (access_token, instance_url) from one fetch
+
+        Raises:
+            OperationalError: If authentication fails
+        """
+        access_token, _expires_in, instance_url = self._fetch_new_token()
+        with self._lock:
+            self._instance_url = instance_url
+        return access_token, instance_url
+
     def get_oauth_token(self) -> str:
         """
         Fetch a fresh OAuth token.
@@ -67,16 +100,18 @@ class OAuthAuthenticator(ABC):
         Raises:
             OperationalError: If authentication fails
         """
-        access_token, _expires_in, instance_url = self._fetch_new_token()
-        self._instance_url = instance_url
-
+        access_token, _instance_url = self.get_oauth_token_and_instance_url()
         return access_token
 
     def get_instance_url(self) -> str:
         """
         Get the Salesforce instance URL returned by OAuth.
 
-        This URL is extracted from the OAuth response and should be used for all API calls.
+        This URL is extracted from the OAuth response and should be used for all
+        API calls. Unlike the core token, the instance URL is stable org
+        metadata, so it is cached after the first fetch: a cold miss is
+        single-flighted under the lock (double-checked locking) so N concurrent
+        first-callers trigger exactly ONE fetch, not a thundering herd.
 
         Returns:
             Salesforce instance URL (e.g., "https://myorg.my.salesforce.com")
@@ -84,9 +119,17 @@ class OAuthAuthenticator(ABC):
         Raises:
             OperationalError: If no token has been fetched yet
         """
-        if self._instance_url is None:
-            # Trigger token fetch to get instance URL
-            self.get_oauth_token()
+        # Fast path: already published, no lock needed.
+        if self._instance_url is not None:
+            return self._instance_url
+
+        with self._lock:
+            # Re-check under the lock — another thread may have published while
+            # we waited. Fetch directly (not via get_oauth_token, which would
+            # re-acquire this non-reentrant lock) so the cold miss fetches once.
+            if self._instance_url is None:
+                _access_token, _expires_in, instance_url = self._fetch_new_token()
+                self._instance_url = instance_url
 
         if self._instance_url is None:
             raise OperationalError("Instance URL not available from OAuth response")

@@ -3,6 +3,7 @@ Tests for Data Cloud Query API client.
 """
 
 import json
+from unittest.mock import patch
 
 import pytest
 import responses
@@ -10,11 +11,34 @@ import responses
 from salesforce_datacloud_connector.api.client import DataCloudQueryClient
 from salesforce_datacloud_connector.api.models import QueryStatus
 from salesforce_datacloud_connector.exceptions import OperationalError, ProgrammingError
+from tests._concurrency_helpers import ConcurrencyGate
 
 
 def mock_token_getter():
     """Mock token getter for tests."""
     return "mock_token_12345"
+
+
+class _FakeResponse:
+    """Minimal stand-in for requests.Response used by the concurrency tests.
+
+    ``responses`` mutates a global registry and is not thread-safe, so the
+    shared-client concurrency tests patch ``requests.request`` directly with a
+    thread-safe fake instead.
+    """
+
+    def __init__(self, status_code, json_body, headers=None):
+        self.status_code = status_code
+        self._json = json_body
+        self.headers = headers or {}
+        self.text = ""
+
+    @property
+    def ok(self):
+        return 200 <= self.status_code < 300
+
+    def json(self):
+        return self._json
 
 
 @responses.activate
@@ -766,3 +790,104 @@ def test_query_status_unknown_keys_ignored():
         }
     )
     assert status.is_complete()
+
+
+# ---------------------------------------------------------------------------
+# Concurrency: a single DataCloudQueryClient shared across threads.
+#
+# threadsafety=2 requires that one connection (hence its one shared query
+# client) be usable from multiple threads at once. The client holds no
+# per-request mutable state — each call builds its own request body, headers,
+# and parses its own response — so concurrent callers must not see each other's
+# query IDs or rows bleed across. These tests pin that invariant so a future
+# change that introduces shared mutable request state fails loudly.
+# ---------------------------------------------------------------------------
+
+
+def _status_header(query_id):
+    return {
+        "x-hyperdb-status": json.dumps(
+            {
+                "queryId": query_id,
+                "completionStatus": "RESULTS_PRODUCED",
+                "progress": 1.0,
+                "rowCount": 1,
+                "chunkCount": 1,
+            }
+        )
+    }
+
+
+def test_shared_client_concurrent_execute_query_keeps_responses_distinct():
+    """N threads issuing distinct queries through ONE shared client each get
+    back their own query id and rows — no cross-thread bleed of request or
+    response state."""
+    client = DataCloudQueryClient(
+        tenant_endpoint="https://test.c360a.salesforce.com",
+        auth_token_getter=mock_token_getter,
+    )
+    parties = 12
+    gate = ConcurrencyGate()
+
+    def fake_request(method, url, headers=None, params=None, json=None, timeout=None):
+        # The per-thread query id is carried in the SQL so the fake can echo it
+        # back in both the body and the status header. Hold every caller inside
+        # the request so their responses are genuinely built concurrently.
+        sql = json["sql"]
+        gate.enter()
+        marker = sql.split("'")[1]
+        return _FakeResponse(
+            200,
+            {"metadata": {"columns": [{"name": "m", "type": "varchar", "nullable": True}]},
+             "data": [[marker]], "returnedRows": 1},
+            headers=_status_header(f"query_{marker}"),
+        )
+
+    def worker(i):
+        return client.execute_query(f"SELECT '{i}' AS m")
+
+    # Patch once in the main thread: patch() setattrs requests.request globally,
+    # so the fake is visible to every worker thread. All threads start and join
+    # inside this context, so the patch outlives them. (Patching per-thread
+    # would race — concurrent setattr on the same module attribute.)
+    with patch("requests.request", side_effect=fake_request):
+        results, errors = gate.run(worker, parties)
+
+    assert errors == []
+    assert gate.entered == parties
+    assert gate.max_concurrent == parties  # all genuinely in-flight together
+    # Each worker sees exactly its own marker echoed back — no cross-talk.
+    for i, resp in enumerate(results):
+        assert resp.status.query_id == f"query_{i}"
+        assert resp.data == [[str(i)]]
+
+
+def test_shared_client_concurrent_fetch_results_keeps_rows_distinct():
+    """Concurrent fetch_results() calls on one shared client return each
+    caller's own rows, proving fetch has no shared per-call buffer."""
+    client = DataCloudQueryClient(
+        tenant_endpoint="https://test.c360a.salesforce.com",
+        auth_token_getter=mock_token_getter,
+    )
+    parties = 12
+    gate = ConcurrencyGate()
+
+    def fake_request(method, url, headers=None, params=None, json=None, timeout=None):
+        # URL is .../query/{query_id}/rows — echo the id back as the row value.
+        query_id = url.split("/query/")[1].split("/rows")[0]
+        gate.enter()
+        return _FakeResponse(
+            200,
+            {"metadata": [], "data": [[query_id]], "returnedRows": 1},
+        )
+
+    def worker(i):
+        return client.fetch_results(query_id=f"q{i}", offset=0)
+
+    with patch("requests.request", side_effect=fake_request):
+        results, errors = gate.run(worker, parties)
+
+    assert errors == []
+    assert gate.entered == parties
+    for i, resp in enumerate(results):
+        assert resp.data == [[f"q{i}"]]
