@@ -7,6 +7,11 @@ This module implements the v3 REST transport layer for the Query API:
 - fetch_results: GET /api/v3/query/{id}/rows
 - cancel_query: DELETE /api/v3/query/{id}
 - poll_until_complete: blocking poll until a query completes
+
+Output format: execute_query and fetch_results negotiate their response body
+format (Arrow IPC stream or JSON) via the Accept header, selected by the
+client's output_format. get_query_status has no Arrow variant per the v3
+spec and always requests JSON.
 """
 
 import json
@@ -25,6 +30,9 @@ from .models import QueryResponse, QueryStatus
 # colon glued to an identifier, so "value::regclass" is left untouched but
 # "= :kind" is captured.
 _NAMED_PARAM_RE = re.compile(r"(?<![:\w]):(\w+)")
+
+_JSON_MEDIA_TYPE = "application/json"
+_ARROW_MEDIA_TYPE = "application/vnd.apache.arrow.stream"
 
 
 class DataCloudQueryClient:
@@ -50,6 +58,7 @@ class DataCloudQueryClient:
         workload: Optional[str] = None,
         user_agent: Optional[str] = None,
         query_settings: Optional[Dict[str, str]] = None,
+        output_format: str = "arrow",
     ):
         """
         Initialize the API client for off-core Query v3.
@@ -64,13 +73,29 @@ class DataCloudQueryClient:
             query_settings: Connection-wide default query settings (e.g. {"time_zone": "UTC"}),
                 merged into every execute_query() call's "settings" field. See
                 https://tableau.github.io/hyper-db/docs/hyper-api/connection#connection-settings
+            output_format: "arrow" (default) or "json". Selects the Accept
+                header used for execute_query/fetch_results. get_query_status
+                always requests JSON regardless of this setting, since v3 has
+                no Arrow variant for the status-only endpoint.
+
+        Raises:
+            ValueError: If output_format is not "arrow" or "json"
         """
+        if output_format not in ("arrow", "json"):
+            raise ValueError(
+                f"Invalid output_format: {output_format!r}. Must be 'arrow' or 'json'"
+            )
+
         self.tenant_endpoint = tenant_endpoint.rstrip("/")
         self.auth_token_getter = auth_token_getter
         self.dataspace = dataspace or "default"
         self.workload = workload
         self.user_agent = user_agent
         self.default_settings: Dict[str, str] = dict(query_settings) if query_settings else {}
+        self._output_format = output_format
+        self._data_accept_header = (
+            _ARROW_MEDIA_TYPE if output_format == "arrow" else _JSON_MEDIA_TYPE
+        )
         self._base_url = f"{self.tenant_endpoint}/api/v3/query"
 
     def _build_user_agent(self) -> str:
@@ -92,13 +117,19 @@ class DataCloudQueryClient:
             user_agent = f"{user_agent} {self.user_agent.strip()}"
         return user_agent
 
-    def _get_headers(self) -> Dict[str, str]:
-        """Get headers for v3 API requests."""
+    def _get_headers(self, accept: str = _JSON_MEDIA_TYPE) -> Dict[str, str]:
+        """Get headers for v3 API requests.
+
+        Args:
+            accept: Value for the Accept header. Only execute_query and
+                fetch_results override this to negotiate Arrow; every other
+                endpoint defaults to JSON.
+        """
         token = self.auth_token_getter()
         headers = {
             "Authorization": f"Bearer {token}",
             "Content-Type": "application/json",
-            "Accept": "application/json",
+            "Accept": accept,
             "User-Agent": self._build_user_agent(),
             "ctx-dataspace-ds_name": self.dataspace,
         }
@@ -118,6 +149,7 @@ class DataCloudQueryClient:
         params: Optional[Dict[str, Any]] = None,
         json_data: Optional[Dict[str, Any]] = None,
         retry_count: int = 0,
+        accept: Optional[str] = None,
     ) -> requests.Response:
         """
         Make an HTTP request with retry logic.
@@ -128,6 +160,9 @@ class DataCloudQueryClient:
             params: Query parameters
             json_data: JSON request body
             retry_count: Current retry attempt
+            accept: Accept header value. Defaults to JSON when omitted; pass
+                the client's Arrow media type explicitly for the data-bearing
+                endpoints (execute_query, fetch_results).
 
         Returns:
             Response object
@@ -139,7 +174,7 @@ class DataCloudQueryClient:
             response = requests.request(
                 method=method,
                 url=url,
-                headers=self._get_headers(),
+                headers=self._get_headers(accept=accept or _JSON_MEDIA_TYPE),
                 params=params,
                 json=json_data,
                 timeout=30,
@@ -155,7 +190,7 @@ class DataCloudQueryClient:
                     time.sleep(self.RETRY_WAIT_SECONDS)
 
                     return self._make_request(
-                        method, url, params, json_data, retry_count + 1
+                        method, url, params, json_data, retry_count + 1, accept
                     )
 
                 # All retries exhausted
@@ -168,7 +203,7 @@ class DataCloudQueryClient:
             if retry_count < self.MAX_RETRIES:
                 time.sleep(self.RETRY_WAIT_SECONDS)
                 return self._make_request(
-                    method, url, params, json_data, retry_count + 1
+                    method, url, params, json_data, retry_count + 1, accept
                 )
             raise OperationalError(f"Request failed: {e}") from e
 
@@ -305,11 +340,17 @@ class DataCloudQueryClient:
         if merged_settings:
             request_body["settings"] = merged_settings
 
-        response = self._make_request("POST", self._base_url, json_data=request_body)
+        response = self._make_request(
+            "POST", self._base_url, json_data=request_body, accept=self._data_accept_header
+        )
 
-        # Parse response body
-        body = response.json()
-        query_response = QueryResponse.from_dict(body)
+        # Parse response body. The x-hyperdb-status header (below) always
+        # carries status as JSON regardless of body format, so this only
+        # branches on how the row/metadata payload itself is decoded.
+        if self._output_format == "arrow":
+            query_response = QueryResponse.from_arrow_bytes(response.content)
+        else:
+            query_response = QueryResponse.from_dict(response.json())
 
         # Parse status from x-hyperdb-status header (v3). The header carries the
         # queryId/rowCount/completionStatus the cursor relies on; the body never
@@ -387,7 +428,11 @@ class DataCloudQueryClient:
         }
 
         try:
-            response = self._make_request("GET", url, params=params)
+            response = self._make_request(
+                "GET", url, params=params, accept=self._data_accept_header
+            )
+            if self._output_format == "arrow":
+                return QueryResponse.from_arrow_bytes(response.content)
             return QueryResponse.from_dict(response.json())
         except Exception as e:
             # Handle "Request out of range" gracefully (400 error)

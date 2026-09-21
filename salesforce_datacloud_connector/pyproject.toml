@@ -15,10 +15,11 @@ dependencies = [
     "cryptography>=41.0.0",
     "pyjwt>=2.8.0",
     "python-dateutil>=2.8.0",
+    "nanoarrow>=0.6.0",
 ]
 
 [project.optional-dependencies]
-pandas = ["pandas>=2.0.0", "pyarrow>=14.0.0"]
+pandas = ["pandas>=2.0.0"]
 
 [dependency-groups]
 dev = [
@@ -28,6 +29,7 @@ dev = [
     "responses>=0.23.0",
     "ruff>=0.1.0",
     "tomli>=2.0.0; python_version<'3.11'",
+    "pyarrow>=14.0.0",
 ]
 
 [tool.hatch.build.targets.wheel]
