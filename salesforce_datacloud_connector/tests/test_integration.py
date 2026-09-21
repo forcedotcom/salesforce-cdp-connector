@@ -67,6 +67,7 @@ def test_end_to_end_sync_query():
         password="password123",
         client_id="client_id",
         client_secret="client_secret",
+        output_format="json",
     )
 
     try:
@@ -141,6 +142,7 @@ def test_end_to_end_with_context_managers():
         password="password123",
         client_id="client_id",
         client_secret="client_secret",
+        output_format="json",
     ) as conn:
         with conn.cursor() as cursor:
             cursor.execute("SELECT 1")
@@ -202,6 +204,7 @@ def test_parameterized_query():
         password="password123",
         client_id="client_id",
         client_secret="client_secret",
+        output_format="json",
     ) as conn:
         cursor = conn.cursor()
         cursor.execute(
@@ -277,6 +280,7 @@ def test_large_result_set_with_pagination():
         password="password123",
         client_id="client_id",
         client_secret="client_secret",
+        output_format="json",
     ) as conn:
         cursor = conn.cursor()
         cursor.execute("SELECT data FROM large_table")
@@ -368,6 +372,7 @@ def test_async_query_with_polling():
         password="password123",
         client_id="client_id",
         client_secret="client_secret",
+        output_format="json",
     ) as conn:
         cursor = conn.cursor()
         cursor.execute("SELECT * FROM large_dataset")
@@ -402,6 +407,7 @@ def test_unsupported_dml_operations():
         password="password123",
         client_id="client_id",
         client_secret="client_secret",
+        output_format="json",
     ) as conn:
         cursor = conn.cursor()
 
@@ -449,6 +455,7 @@ def test_sql_syntax_error():
         password="password123",
         client_id="client_id",
         client_secret="client_secret",
+        output_format="json",
     ) as conn:
         cursor = conn.cursor()
 
@@ -506,6 +513,7 @@ def test_cursor_iteration():
         password="password123",
         client_id="client_id",
         client_secret="client_secret",
+        output_format="json",
     ) as conn:
         cursor = conn.cursor()
         cursor.execute("SELECT name FROM users")
@@ -588,6 +596,7 @@ def test_jwt_authentication():
                 username="test@example.com",
                 client_id="client_id",
                 jwt_private_key="-----BEGIN RSA PRIVATE KEY-----\ntest\n-----END RSA PRIVATE KEY-----",
+                output_format="json",
             )
 
             cursor = conn.cursor()
@@ -651,6 +660,7 @@ def test_refresh_token_authentication():
         client_id="client_id",
         client_secret="client_secret",
         refresh_token="refresh_token_xyz",
+        output_format="json",
     )
 
     cursor = conn.cursor()
