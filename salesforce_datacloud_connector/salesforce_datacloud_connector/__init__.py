@@ -25,7 +25,7 @@ Basic usage:
     conn.close()
 """
 
-from typing import Optional
+from typing import Dict, Optional
 
 # DB-API 2.0 module globals
 apilevel = "2.0"  # DB-API specification version
@@ -84,6 +84,7 @@ def connect(
     workload: Optional[str] = None,
     target_org: Optional[str] = None,
     user_agent: Optional[str] = None,
+    query_settings: Optional[Dict[str, str]] = None,
 ) -> Connection:
     """
     Create a connection to Salesforce Data Cloud.
@@ -110,6 +111,9 @@ def connect(
         user_agent: Optional caller identifier appended to the driver's
                     User-Agent header (e.g. "my-app/1.0"). The header sent is
                     "salesforce-cdp-connector/{version} {user_agent}".
+        query_settings: Connection-wide default query settings (e.g. {"time_zone": "UTC"}),
+            merged into every cursor.execute() call on this connection. See
+            https://tableau.github.io/hyper-db/docs/hyper-api/connection#connection-settings
 
     Returns:
         Connection instance
@@ -211,7 +215,11 @@ def connect(
 
     # Create and return connection with exchanger
     return Connection(
-        exchanger, dataspace=dataspace, workload=workload, user_agent=user_agent
+        exchanger,
+        dataspace=dataspace,
+        workload=workload,
+        user_agent=user_agent,
+        query_settings=query_settings,
     )
 
 

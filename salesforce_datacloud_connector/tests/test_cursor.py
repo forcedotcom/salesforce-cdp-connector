@@ -299,6 +299,31 @@ def test_execute_with_parameters():
     assert args[0][1] == {"status": "Active"}
 
 
+def test_execute_passes_settings_to_client():
+    """Cursor.execute forwards `settings` to the API client for per-query override."""
+    client = create_mock_client()
+    cursor = Cursor(client)
+
+    client.execute_query.return_value = QueryResponse(
+        data=[],
+        metadata=[],
+        returned_rows=0,
+        status=QueryStatus(
+            query_id="q1",
+            completion_status="ResultsProduced",
+            progress=1.0,
+            row_count=0,
+            chunk_count=0,
+        ),
+    )
+
+    cursor.execute("SELECT 1", settings={"time_zone": "UTC"})
+
+    client.execute_query.assert_called_once_with(
+        "SELECT 1", None, settings={"time_zone": "UTC"}
+    )
+
+
 def test_execute_unsupported_operations():
     """Test that DML/DDL operations raise NotSupportedError."""
     client = create_mock_client()

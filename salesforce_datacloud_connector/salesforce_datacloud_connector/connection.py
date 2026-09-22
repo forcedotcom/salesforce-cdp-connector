@@ -4,7 +4,7 @@ DB-API 2.0 Connection implementation for Salesforce Data Cloud.
 The Connection class manages the database connection and creates cursors.
 """
 
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 from .api.client import DataCloudQueryClient
 from .cursor import Cursor
@@ -26,6 +26,7 @@ class Connection:
         dataspace: Optional[str] = None,
         workload: Optional[str] = None,
         user_agent: Optional[str] = None,
+        query_settings: Optional[Dict[str, str]] = None,
     ):
         """
         Initialize connection.
@@ -36,6 +37,9 @@ class Connection:
             workload: Optional workload name for logging/debugging
             user_agent: Optional caller identifier appended to the driver's
                 User-Agent header (e.g. "my-app/1.0")
+            query_settings: Connection-wide default query settings (e.g. {"time_zone": "UTC"}),
+                merged into every cursor.execute() call on this connection. See
+                https://tableau.github.io/hyper-db/docs/hyper-api/connection#connection-settings
 
         Note: Use the connect() factory function instead of instantiating directly.
         """
@@ -52,6 +56,7 @@ class Connection:
             dataspace=dataspace,
             workload=workload,
             user_agent=user_agent,
+            query_settings=query_settings,
         )
 
     def _check_closed(self):

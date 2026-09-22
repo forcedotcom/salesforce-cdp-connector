@@ -303,6 +303,27 @@ conn = sfdc.connect(
 )
 ```
 
+### Query settings
+
+Connection-wide defaults, applied to every query on the connection:
+
+```python
+conn = sfdc.connect(
+    ...,
+    query_settings={"time_zone": "UTC"},
+)
+```
+
+Per-call settings, merged over the connection-level defaults (per-call wins on
+key collision):
+
+```python
+cursor.execute("SELECT ...", settings={"time_zone": "America/Los_Angeles"})
+```
+
+See the [Hyper connection settings reference](https://tableau.github.io/hyper-db/docs/hyper-api/connection#connection-settings)
+for available keys. Values must be strings.
+
 ### Cursor array size
 
 ```python

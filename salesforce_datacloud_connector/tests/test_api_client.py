@@ -160,6 +160,75 @@ def test_execute_query_with_parameters_v3():
 
 
 @responses.activate
+def test_execute_query_includes_settings_in_request_body():
+    """Per-call `settings` are forwarded as-is in the v3 request body's "settings" field."""
+    def check_request(request):
+        body = json.loads(request.body.decode("utf-8"))
+        assert body["settings"] == {"time_zone": "UTC"}
+
+        status_header = {
+            "queryId": "q1", "completionStatus": "RESULTS_PRODUCED",
+            "progress": 1.0, "rowCount": 0, "chunkCount": 0,
+        }
+        return (200, {"x-hyperdb-status": json.dumps(status_header)},
+                json.dumps({"metadata": {"columns": []}, "data": [], "returnedRows": 0}))
+
+    responses.add_callback(
+        responses.POST,
+        "https://test.c360a.salesforce.com/api/v3/query",
+        callback=check_request,
+    )
+
+    client = DataCloudQueryClient(
+        tenant_endpoint="https://test.c360a.salesforce.com",
+        auth_token_getter=mock_token_getter,
+    )
+    client.execute_query("SELECT 1", settings={"time_zone": "UTC"})
+
+
+@responses.activate
+def test_execute_query_merges_default_and_per_call_settings():
+    """Connection-level default settings (from the constructor) merge with
+    per-call settings; on key collision, the per-call value wins."""
+    def check_request(request):
+        body = json.loads(request.body.decode("utf-8"))
+        assert body["settings"] == {"time_zone": "America/New_York", "lc_time": "en_US"}
+
+        status_header = {
+            "queryId": "q1", "completionStatus": "RESULTS_PRODUCED",
+            "progress": 1.0, "rowCount": 0, "chunkCount": 0,
+        }
+        return (200, {"x-hyperdb-status": json.dumps(status_header)},
+                json.dumps({"metadata": {"columns": []}, "data": [], "returnedRows": 0}))
+
+    responses.add_callback(
+        responses.POST,
+        "https://test.c360a.salesforce.com/api/v3/query",
+        callback=check_request,
+    )
+
+    client = DataCloudQueryClient(
+        tenant_endpoint="https://test.c360a.salesforce.com",
+        auth_token_getter=mock_token_getter,
+        query_settings={"time_zone": "UTC", "lc_time": "en_US"},
+    )
+    client.execute_query("SELECT 1", settings={"time_zone": "America/New_York"})
+
+
+@responses.activate
+def test_execute_query_settings_rejects_non_string_value():
+    """Settings values must be strings, matching the server's Map<String,String>
+    contract; a non-string value must be rejected before any request is sent."""
+    client = DataCloudQueryClient(
+        tenant_endpoint="https://test.c360a.salesforce.com",
+        auth_token_getter=mock_token_getter,
+    )
+
+    with pytest.raises(ProgrammingError):
+        client.execute_query("SELECT 1", settings={"query_row_limit": 100})
+
+
+@responses.activate
 def test_named_parameters_translated_to_qmark_v3():
     """The driver advertises paramstyle='named', but v3 accepts only positional
     (qmark) parameters. A :name placeholder in the SQL must be rewritten to ?

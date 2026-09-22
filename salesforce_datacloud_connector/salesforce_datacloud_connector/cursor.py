@@ -136,7 +136,10 @@ class Cursor:
         return tuple(converted)
 
     def execute(
-        self, operation: str, parameters: Optional[Dict[str, Any]] = None
+        self,
+        operation: str,
+        parameters: Optional[Dict[str, Any]] = None,
+        settings: Optional[Dict[str, Any]] = None,
     ) -> "Cursor":
         """
         Execute a SQL query.
@@ -146,6 +149,9 @@ class Cursor:
                 (paramstyle="named"); these are rewritten to v3 positional
                 parameters before the request is sent.
             parameters: Named parameters dict (e.g., {"param": "value"})
+            settings: Per-call query settings (e.g. {"time_zone": "UTC"}),
+                merged over the connection-level defaults; per-call wins on
+                collision
 
         Returns:
             Self (allows chaining)
@@ -170,7 +176,7 @@ class Cursor:
             )
 
         # Execute query
-        response = self._client.execute_query(operation, parameters)
+        response = self._client.execute_query(operation, parameters, settings=settings)
 
         # Store metadata and query ID
         self._query_id = response.status.query_id

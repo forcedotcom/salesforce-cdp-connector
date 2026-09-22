@@ -49,6 +49,7 @@ class DataCloudQueryClient:
         dataspace: Optional[str] = None,
         workload: Optional[str] = None,
         user_agent: Optional[str] = None,
+        query_settings: Optional[Dict[str, str]] = None,
     ):
         """
         Initialize the API client for off-core Query v3.
@@ -60,12 +61,16 @@ class DataCloudQueryClient:
             workload: Optional workload name for observability
             user_agent: Optional caller identifier appended to the driver's own
                 User-Agent token (e.g. "my-app/1.0")
+            query_settings: Connection-wide default query settings (e.g. {"time_zone": "UTC"}),
+                merged into every execute_query() call's "settings" field. See
+                https://tableau.github.io/hyper-db/docs/hyper-api/connection#connection-settings
         """
         self.tenant_endpoint = tenant_endpoint.rstrip("/")
         self.auth_token_getter = auth_token_getter
         self.dataspace = dataspace or "default"
         self.workload = workload
         self.user_agent = user_agent
+        self.default_settings: Dict[str, str] = dict(query_settings) if query_settings else {}
         self._base_url = f"{self.tenant_endpoint}/api/v3/query"
 
     def _build_user_agent(self) -> str:
@@ -239,11 +244,31 @@ class DataCloudQueryClient:
         new_sql = _NAMED_PARAM_RE.sub(_replace, sql)
         return new_sql, sql_params
 
+    def _merge_settings(self, settings: Optional[Dict[str, str]]) -> Dict[str, str]:
+        """
+        Merge connection-level default settings with per-call settings.
+
+        Per-call settings win on key collision. Values must be strings, matching
+        the server's Map<String,String> contract (same shape as the JDBC driver's
+        gRPC QueryParam.settings).
+
+        Raises:
+            ProgrammingError: If any setting value is not a string
+        """
+        merged = {**self.default_settings, **(settings or {})}
+        for key, value in merged.items():
+            if not isinstance(value, str):
+                raise ProgrammingError(
+                    f"Query setting '{key}' must be a string, got {type(value).__name__}"
+                )
+        return merged
+
     def execute_query(
         self,
         sql: str,
         parameters: Optional[Dict[str, Any]] = None,
         row_limit: int = 1000000,
+        settings: Optional[Dict[str, str]] = None,
     ) -> QueryResponse:
         """
         Execute a SQL query via POST /api/v3/query.
@@ -252,17 +277,21 @@ class DataCloudQueryClient:
             sql: SQL query string
             parameters: Named parameters dict (e.g., {"status": "Active"})
             row_limit: Maximum rows to return (passed as queryRowLimit)
+            settings: Per-call query settings (e.g. {"time_zone": "UTC"}), merged
+                over the connection-level defaults; per-call wins on collision
 
         Returns:
             QueryResponse with initial results and status
 
         Raises:
-            ProgrammingError: For SQL syntax errors (400)
+            ProgrammingError: For SQL syntax errors (400) or a non-string setting value
             OperationalError: For auth/network failures (401, 403, 500+)
         """
         # v3 accepts only positional (qmark) parameters; rewrite any :name
         # placeholders and build the positional array in SQL order.
         sql, sql_params = self._bind_parameters(sql, parameters)
+
+        merged_settings = self._merge_settings(settings)
 
         request_body = {
             "sql": sql,
@@ -272,6 +301,9 @@ class DataCloudQueryClient:
 
         if sql_params:
             request_body["parameters"] = sql_params
+
+        if merged_settings:
+            request_body["settings"] = merged_settings
 
         response = self._make_request("POST", self._base_url, json_data=request_body)
 
