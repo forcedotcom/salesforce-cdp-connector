@@ -2,6 +2,7 @@
 Tests for OAuth authentication.
 """
 
+import subprocess
 from unittest.mock import patch
 
 import pytest
@@ -10,6 +11,7 @@ import responses
 from salesforce_datacloud_connector.auth.oauth import (
     JWTAuthenticator,
     RefreshTokenAuthenticator,
+    SfCliAuthenticator,
     UsernamePasswordAuthenticator,
 )
 from salesforce_datacloud_connector.exceptions import OperationalError
@@ -301,3 +303,149 @@ def test_client_credentials_auth_failure():
 
     with pytest.raises(OperationalError):
         auth.get_oauth_token()
+
+
+def _completed_process(stdout: str) -> subprocess.CompletedProcess:
+    return subprocess.CompletedProcess(args=[], returncode=0, stdout=stdout, stderr="")
+
+
+_ORG_DISPLAY_OK = '{"status": 0, "result": {"instanceUrl": "https://myorg.my.salesforce.com"}}'
+_SHOW_TOKEN_OK = '{"status": 0, "result": {"accessToken": "sf_cli_token_12345"}}'
+
+
+@patch("subprocess.run")
+def test_sf_cli_auth_forces_no_color(mock_run):
+    """`sf ... --json` can still emit ANSI color codes when FORCE_COLOR is set
+    in the environment, which breaks JSON parsing. NO_COLOR=1 must be passed
+    to the subprocess env so --json output stays plain regardless of the
+    caller's shell settings."""
+    mock_run.side_effect = [
+        _completed_process(_ORG_DISPLAY_OK),
+        _completed_process(_SHOW_TOKEN_OK),
+    ]
+
+    SfCliAuthenticator().get_oauth_token()
+
+    for call in mock_run.call_args_list:
+        assert call.kwargs["env"]["NO_COLOR"] == "1"
+
+
+@patch("subprocess.run")
+def test_sf_cli_auth_success(mock_run):
+    """SfCliAuthenticator combines `org display` (instanceUrl) and
+    `org auth show-access-token` (accessToken) into one core token."""
+    mock_run.side_effect = [
+        _completed_process(_ORG_DISPLAY_OK),
+        _completed_process(_SHOW_TOKEN_OK),
+    ]
+
+    auth = SfCliAuthenticator(target_org="my-alias")
+    token = auth.get_oauth_token()
+
+    assert token == "sf_cli_token_12345"
+    assert auth.get_instance_url() == "https://myorg.my.salesforce.com"
+
+    first_call_args = mock_run.call_args_list[0].args[0]
+    second_call_args = mock_run.call_args_list[1].args[0]
+    assert first_call_args == ["sf", "org", "display", "--json", "--target-org", "my-alias"]
+    assert second_call_args == [
+        "sf", "org", "auth", "show-access-token", "--json", "--target-org", "my-alias"
+    ]
+
+
+@patch("subprocess.run")
+def test_sf_cli_auth_default_org_no_target_flag(mock_run):
+    """Without target_org, neither CLI call includes --target-org — the CLI's
+    own default-org resolution applies."""
+    mock_run.side_effect = [
+        _completed_process(_ORG_DISPLAY_OK),
+        _completed_process(_SHOW_TOKEN_OK),
+    ]
+
+    auth = SfCliAuthenticator()
+    auth.get_oauth_token()
+
+    first_call_args = mock_run.call_args_list[0].args[0]
+    second_call_args = mock_run.call_args_list[1].args[0]
+    assert "--target-org" not in first_call_args
+    assert "--target-org" not in second_call_args
+
+
+@patch("subprocess.run")
+def test_sf_cli_auth_cli_not_found(mock_run):
+    """A missing `sf` binary should raise a clear OperationalError, not a
+    raw FileNotFoundError."""
+    mock_run.side_effect = FileNotFoundError()
+
+    auth = SfCliAuthenticator()
+    with pytest.raises(OperationalError, match="Salesforce CLI"):
+        auth.get_oauth_token()
+
+
+@patch("subprocess.run")
+def test_sf_cli_auth_org_display_failure(mock_run):
+    """A non-zero status from `org display` (e.g. no authenticated org)
+    surfaces the CLI's own message and skips the token-fetch call."""
+    mock_run.side_effect = [
+        _completed_process(
+            '{"status": 1, "message": "No authorization information found for my-alias."}'
+        ),
+    ]
+
+    auth = SfCliAuthenticator(target_org="my-alias")
+    with pytest.raises(OperationalError, match="No authorization information found"):
+        auth.get_oauth_token()
+
+    assert mock_run.call_count == 1
+
+
+@patch("subprocess.run")
+def test_sf_cli_auth_show_access_token_failure(mock_run):
+    """A non-zero status from `org auth show-access-token` surfaces the
+    CLI's own message."""
+    mock_run.side_effect = [
+        _completed_process(_ORG_DISPLAY_OK),
+        _completed_process('{"status": 1, "message": "No auth found."}'),
+    ]
+
+    auth = SfCliAuthenticator(target_org="my-alias")
+    with pytest.raises(OperationalError, match="No auth found"):
+        auth.get_oauth_token()
+
+
+@patch("subprocess.run")
+def test_sf_cli_auth_malformed_json(mock_run):
+    """Non-JSON stdout raises OperationalError instead of propagating the
+    raw JSONDecodeError."""
+    mock_run.side_effect = [_completed_process("not json")]
+
+    auth = SfCliAuthenticator()
+    with pytest.raises(OperationalError):
+        auth.get_oauth_token()
+
+
+@patch("subprocess.run")
+def test_sf_cli_auth_timeout(mock_run):
+    """A CLI call that hangs past the timeout raises OperationalError."""
+    mock_run.side_effect = subprocess.TimeoutExpired(cmd="sf", timeout=30)
+
+    auth = SfCliAuthenticator()
+    with pytest.raises(OperationalError):
+        auth.get_oauth_token()
+
+
+@patch("subprocess.run")
+def test_sf_cli_auth_fetches_fresh_each_call(mock_run):
+    """Matches the no-cache model: each get_oauth_token() call re-invokes the
+    CLI rather than reusing a previous result."""
+    mock_run.side_effect = [
+        _completed_process(_ORG_DISPLAY_OK),
+        _completed_process('{"status": 0, "result": {"accessToken": "token1"}}'),
+        _completed_process(_ORG_DISPLAY_OK),
+        _completed_process('{"status": 0, "result": {"accessToken": "token2"}}'),
+    ]
+
+    auth = SfCliAuthenticator()
+    assert auth.get_oauth_token() == "token1"
+    assert auth.get_oauth_token() == "token2"
+    assert mock_run.call_count == 4

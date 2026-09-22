@@ -5,6 +5,7 @@ from .oauth import (
     JWTAuthenticator,
     OAuthAuthenticator,
     RefreshTokenAuthenticator,
+    SfCliAuthenticator,
     UsernamePasswordAuthenticator,
 )
 from .token_exchanger import DataCloudTokenExchanger
@@ -15,5 +16,6 @@ __all__ = [
     "JWTAuthenticator",
     "RefreshTokenAuthenticator",
     "ClientCredentialsAuthenticator",
+    "SfCliAuthenticator",
     "DataCloudTokenExchanger",
 ]
