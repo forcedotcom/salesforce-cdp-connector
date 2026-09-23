@@ -47,6 +47,7 @@ ROWID = DBAPITypeObject("ROWID")
 DATACLOUD_TYPE_TO_DBAPI = {
     "Varchar": STRING,
     "Numeric": NUMBER,
+    "Timestamp": DATETIME,
     "TimestampTZ": DATETIME,
     "Boolean": NUMBER,  # Booleans are often categorized as NUMBER in DB-API
     "Date": DATETIME,
@@ -116,8 +117,8 @@ def convert_datacloud_value(value: Any, datacloud_type: str,
         elif normalized_type in ("float", "double"):
             return float(value)
 
-        # TimestampTZ → datetime with timezone
-        elif normalized_type == "timestamptz":
+        # Timestamp / TimestampTZ → datetime (naive or tz-aware, respectively)
+        elif normalized_type in ("timestamp", "timestamptz"):
             if isinstance(value, datetime):
                 return value
             # Parse string timestamp

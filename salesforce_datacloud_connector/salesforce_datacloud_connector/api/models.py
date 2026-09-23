@@ -9,6 +9,8 @@ from typing import Any, List, Optional, Tuple
 
 import nanoarrow as na
 
+from ..exceptions import NotSupportedError
+
 
 @dataclass
 class QueryStatus:
@@ -80,6 +82,36 @@ class QueryStatus:
         return not self.is_complete()
 
 
+# Explicit Arrow type -> Data Cloud type vocabulary (types.py's varchar/numeric/etc.).
+# Deliberately exhaustive rather than an if/elif chain with a fallback: any
+# nanoarrow na.Type not listed here is unsupported by the v3 Arrow output
+# format and _arrow_type_to_datacloud_type() raises NotSupportedError for it,
+# mirroring the JDBC driver's ArrowToHyperTypeMapper visitor, which the Java
+# compiler forces to handle every ArrowType case explicitly. TIMESTAMP is
+# handled separately below, since its mapping depends on field.timezone.
+_ARROW_TYPE_TO_DATACLOUD_TYPE = {
+    na.Type.BOOL: "boolean",
+    na.Type.INT8: "integer",
+    na.Type.INT16: "integer",
+    na.Type.INT32: "integer",
+    na.Type.UINT8: "integer",
+    na.Type.UINT16: "integer",
+    na.Type.UINT32: "integer",
+    na.Type.INT64: "bigint",
+    na.Type.UINT64: "bigint",
+    na.Type.FLOAT: "float",
+    na.Type.HALF_FLOAT: "float",
+    na.Type.DOUBLE: "double",
+    na.Type.DECIMAL128: "numeric",
+    na.Type.DECIMAL256: "numeric",
+    na.Type.STRING: "varchar",
+    na.Type.LARGE_STRING: "varchar",
+    na.Type.STRING_VIEW: "varchar",
+    na.Type.DATE32: "date",
+    na.Type.DATE64: "date",
+}
+
+
 def _arrow_type_to_datacloud_type(field: "na.Schema") -> Tuple[str, Optional[int], Optional[int]]:
     """
     Map a nanoarrow field's Arrow type to the lowercase Data Cloud type
@@ -91,40 +123,32 @@ def _arrow_type_to_datacloud_type(field: "na.Schema") -> Tuple[str, Optional[int
 
     Returns:
         (datacloud_type_name, precision, scale)
+
+    Raises:
+        NotSupportedError: If the field's Arrow type has no Data Cloud
+            equivalent (e.g. STRUCT, LIST, MAP, BINARY, TIME32/64, DURATION,
+            intervals, unions, dictionary-encoded columns).
     """
     arrow_type = field.type
-    precision: Optional[int] = None
-    scale: Optional[int] = None
 
-    if arrow_type == na.Type.BOOL:
-        type_name = "boolean"
-    elif arrow_type in (
-        na.Type.INT8, na.Type.INT16, na.Type.INT32,
-        na.Type.UINT8, na.Type.UINT16, na.Type.UINT32,
-    ):
-        type_name = "integer"
-    elif arrow_type in (na.Type.INT64, na.Type.UINT64):
-        type_name = "bigint"
-    elif arrow_type in (na.Type.FLOAT, na.Type.HALF_FLOAT):
-        type_name = "float"
-    elif arrow_type == na.Type.DOUBLE:
-        type_name = "double"
-    elif arrow_type in (na.Type.DECIMAL128, na.Type.DECIMAL256):
-        type_name = "numeric"
-        precision = field.precision
-        scale = field.scale
-    elif arrow_type in (na.Type.STRING, na.Type.LARGE_STRING, na.Type.STRING_VIEW):
-        type_name = "varchar"
-    elif arrow_type in (na.Type.DATE32, na.Type.DATE64):
-        type_name = "date"
-    elif arrow_type == na.Type.TIMESTAMP:
-        type_name = "timestamptz"
-    else:
-        # Unrecognized Arrow type: fall back to varchar, matching the
-        # existing ColumnMetadata.from_dict() default for unknown types.
-        type_name = "varchar"
+    if arrow_type == na.Type.TIMESTAMP:
+        # A tz-naive Arrow timestamp is a different SQL type than a tz-aware
+        # one; collapsing both to "timestamptz" would silently discard that
+        # distinction, so branch on the field's actual timezone like JDBC does.
+        type_name = "timestamp" if field.timezone is None else "timestamptz"
+        return type_name, None, None
 
-    return type_name, precision, scale
+    if arrow_type in (na.Type.DECIMAL128, na.Type.DECIMAL256):
+        return "numeric", field.precision, field.scale
+
+    type_name = _ARROW_TYPE_TO_DATACLOUD_TYPE.get(arrow_type)
+    if type_name is None:
+        raise NotSupportedError(
+            f"Arrow type {arrow_type!r} for column {field.name!r} is not "
+            "supported by the Data Cloud connector's Arrow output format"
+        )
+
+    return type_name, None, None
 
 
 @dataclass
