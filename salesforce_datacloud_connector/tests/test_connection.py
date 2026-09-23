@@ -329,6 +329,32 @@ def test_connect_client_credentials_requires_secret():
         )
 
 
+def test_connect_invalid_output_format_fails_before_any_network_call():
+    """connect() must reject an invalid output_format before constructing an
+    authenticator or performing any network I/O, not just later inside
+    DataCloudQueryClient.__init__ (which only runs after login)."""
+    from unittest.mock import patch
+
+    import pytest
+    import salesforce_datacloud_connector as sfdc
+    from salesforce_datacloud_connector.auth.oauth import UsernamePasswordAuthenticator
+
+    with patch.object(
+        UsernamePasswordAuthenticator, "_fetch_new_token",
+        side_effect=AssertionError("authenticator must not be reached"),
+    ):
+        with pytest.raises(ValueError, match="output_format"):
+            sfdc.connect(
+                login_url="https://login.salesforce.com",
+                auth_type="username_password",
+                username="user@example.com",
+                password="password",
+                client_id="client_id",
+                client_secret="client_secret",
+                output_format="xml",
+            )
+
+
 def test_connect_positional_args_backward_compatible():
     """connect()'s pre-target_org positional parameter order (…, dataspace,
     workload) must still bind correctly — target_org must not shift dataspace

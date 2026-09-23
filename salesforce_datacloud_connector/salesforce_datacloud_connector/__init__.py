@@ -157,6 +157,15 @@ def connect(
             refresh_token="refresh_token_here"
         )
     """
+    # Validate output_format before any network I/O (authentication happens
+    # below via the token exchanger). Without this, an invalid output_format
+    # would only surface after a real login round-trip, inside
+    # DataCloudQueryClient.__init__ via Connection.__init__.
+    if output_format not in ("arrow", "json"):
+        raise ValueError(
+            f"Invalid output_format: {output_format!r}. Must be 'arrow' or 'json'"
+        )
+
     # Validate and create authenticator based on auth_type
     if auth_type == "username_password":
         if not all([username, password, client_id, client_secret]):

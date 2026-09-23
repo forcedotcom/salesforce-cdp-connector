@@ -4,8 +4,10 @@ import datetime
 from decimal import Decimal
 
 import pyarrow as pa
+import pytest
 
 from salesforce_datacloud_connector.api.models import QueryStatus, ColumnMetadata, QueryResponse
+from salesforce_datacloud_connector.exceptions import NotSupportedError
 
 from ._arrow_fixtures import build_arrow_ipc_bytes, nanoarrow_field_for
 
@@ -163,6 +165,22 @@ def test_column_metadata_from_arrow_field_timestamp_tz():
     field = nanoarrow_field_for(pa.field("created_at", pa.timestamp("us", tz="UTC"), nullable=True))
     col = ColumnMetadata.from_arrow_field(field)
     assert col.type == "timestamptz"
+
+
+def test_column_metadata_from_arrow_field_timestamp_naive():
+    """Test that a tz-naive timestamp maps to "timestamp", not "timestamptz"."""
+    field = nanoarrow_field_for(pa.field("created_at", pa.timestamp("us"), nullable=True))
+    col = ColumnMetadata.from_arrow_field(field)
+    assert col.type == "timestamp"
+
+
+def test_column_metadata_from_arrow_field_unsupported_type_raises():
+    """Test that an Arrow type with no Data Cloud equivalent (e.g. a list)
+    raises NotSupportedError instead of silently falling back to varchar."""
+    field = nanoarrow_field_for(pa.field("tags", pa.list_(pa.string()), nullable=True))
+
+    with pytest.raises(NotSupportedError, match="not supported"):
+        ColumnMetadata.from_arrow_field(field)
 
 
 def test_column_metadata_from_arrow_field_float_and_double():
