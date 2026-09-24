@@ -27,6 +27,7 @@ reproducible on every run instead of relying on scheduling luck:
 """
 
 import threading
+import time
 from typing import Callable, List, Tuple
 
 
@@ -42,6 +43,13 @@ def run_concurrently(
     Returns ``(results, errors)`` where ``results[i]`` is worker ``i``'s return
     value (``None`` if it raised) and ``errors`` is a list of ``(i, exception)``
     sorted by index for every worker that raised.
+
+    ``join_timeout`` is the SHARED wall-clock budget for the whole join phase
+    (not a per-thread allowance that can sum up across ``parties`` threads). If
+    any worker is still alive once that budget elapses, this raises
+    ``RuntimeError`` instead of returning — a worker thread that never finishes
+    is a deadlock, and worker threads are daemons precisely so a raise here
+    doesn't leave anything behind that could keep the interpreter/pytest alive.
     """
     results: List[object] = [None] * parties
     errors: List[Tuple[int, BaseException]] = []
@@ -49,20 +57,41 @@ def run_concurrently(
     start_barrier = threading.Barrier(parties)
 
     def runner(i: int) -> None:
-        # Release all workers into the body at the same instant so the race is
-        # real, not an artifact of staggered thread start-up.
-        start_barrier.wait(timeout=start_timeout)
         try:
+            # Release all workers into the body at the same instant so the race
+            # is real, not an artifact of staggered thread start-up. This call
+            # lives inside the try so a broken/timed-out barrier (e.g. because
+            # a sibling worker died before reaching it) is captured and
+            # reported like any other worker failure instead of being lost.
+            start_barrier.wait(timeout=start_timeout)
             results[i] = worker(i)
         except BaseException as exc:  # noqa: BLE001 - surface every failure to the test
             with errors_lock:
                 errors.append((i, exc))
 
-    threads = [threading.Thread(target=runner, args=(i,)) for i in range(parties)]
+    # Daemon so a deadlocked worker (one that never returns) can never keep
+    # the interpreter/pytest process alive — the explicit is_alive() check
+    # below is what turns that situation into a clean failure instead of a
+    # silent hang.
+    threads = [threading.Thread(target=runner, args=(i,), daemon=True) for i in range(parties)]
     for t in threads:
         t.start()
+
+    # Join against a single shared deadline for the whole batch, not an
+    # independent per-thread timeout — otherwise N slow-but-fine threads could
+    # each legitimately use up to join_timeout and the loop would take
+    # N * join_timeout in the worst case instead of join_timeout overall.
+    deadline = time.monotonic() + join_timeout
     for t in threads:
-        t.join(timeout=join_timeout)
+        remaining = deadline - time.monotonic()
+        t.join(timeout=max(remaining, 0.0))
+
+    stuck = [i for i, t in enumerate(threads) if t.is_alive()]
+    if stuck:
+        raise RuntimeError(
+            f"deadlock: {len(stuck)} of {parties} worker thread(s) did not finish "
+            f"within {join_timeout}s (indices={stuck})"
+        )
 
     errors.sort(key=lambda pair: pair[0])
     return results, errors
