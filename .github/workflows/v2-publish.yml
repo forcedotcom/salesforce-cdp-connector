@@ -12,7 +12,7 @@ jobs:
     if: startsWith(github.event.release.tag_name, 'salesforce-datacloud-connector-')
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Check tag matches pyproject version
         working-directory: salesforce_datacloud_connector
         run: |
@@ -34,8 +34,8 @@ jobs:
       run:
         working-directory: salesforce_datacloud_connector
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v5
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
           cache-dependency-glob: salesforce_datacloud_connector/uv.lock
@@ -50,15 +50,15 @@ jobs:
       run:
         working-directory: salesforce_datacloud_connector
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v5
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
           cache-dependency-glob: salesforce_datacloud_connector/uv.lock
       - run: uv python install 3.10
       - run: uv sync --all-extras --dev --frozen
       - run: uv build
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: dist
           path: salesforce_datacloud_connector/dist/
@@ -70,7 +70,7 @@ jobs:
     permissions:
       id-token: write
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: dist
           path: dist/
