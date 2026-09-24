@@ -29,7 +29,7 @@ from typing import Optional
 
 # DB-API 2.0 module globals
 apilevel = "2.0"  # DB-API specification version
-threadsafety = 1  # Threads may share the module, but not connections
+threadsafety = 2  # Threads may share the module and connections, but not cursors
 paramstyle = "named"  # Named parameter style (:param)
 
 # Import and expose exceptions
