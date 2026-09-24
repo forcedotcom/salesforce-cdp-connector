@@ -784,6 +784,7 @@ def test_default_user_agent_header():
     client = DataCloudQueryClient(
         tenant_endpoint="https://test.c360a.salesforce.com",
         auth_token_getter=mock_token_getter,
+        output_format="json",
     )
     client.execute_query("SELECT 1")
 
@@ -815,6 +816,7 @@ def test_user_agent_append():
         tenant_endpoint="https://test.c360a.salesforce.com",
         auth_token_getter=mock_token_getter,
         user_agent="my-app/1.0",
+        output_format="json",
     )
     client.execute_query("SELECT 1")
 
@@ -844,6 +846,7 @@ def test_blank_user_agent_falls_back_to_default():
         tenant_endpoint="https://test.c360a.salesforce.com",
         auth_token_getter=mock_token_getter,
         user_agent="   ",
+        output_format="json",
     )
     client.execute_query("SELECT 1")
 
