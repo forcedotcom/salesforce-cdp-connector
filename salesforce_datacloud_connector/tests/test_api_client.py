@@ -668,6 +668,96 @@ def test_dataspace_header():
 
 
 @responses.activate
+def test_default_user_agent_header():
+    """Every off-core call carries a User-Agent identifying the driver, matching
+    the JDBC driver's 'salesforce-datacloud-jdbc/{version}' convention. The
+    product token is the literal 'salesforce-cdp-connector' and the version is
+    the package __version__."""
+    from salesforce_datacloud_connector import __version__
+
+    def check_request(request):
+        assert request.headers.get("User-Agent") == f"salesforce-cdp-connector/{__version__}"
+        status_header = {
+            "queryId": "q1", "completionStatus": "RESULTS_PRODUCED",
+            "progress": 1.0, "rowCount": 0, "chunkCount": 0,
+        }
+        return (200, {"x-hyperdb-status": json.dumps(status_header)},
+                '{"metadata":{"columns":[]},"data":[],"returnedRows":0}')
+
+    responses.add_callback(
+        responses.POST,
+        "https://test.c360a.salesforce.com/api/v3/query",
+        callback=check_request,
+    )
+
+    client = DataCloudQueryClient(
+        tenant_endpoint="https://test.c360a.salesforce.com",
+        auth_token_getter=mock_token_getter,
+    )
+    client.execute_query("SELECT 1")
+
+
+@responses.activate
+def test_user_agent_append():
+    """A caller-supplied user_agent is appended after the driver's own token
+    (space-separated), so the driver token always leads."""
+    from salesforce_datacloud_connector import __version__
+
+    def check_request(request):
+        assert request.headers.get("User-Agent") == (
+            f"salesforce-cdp-connector/{__version__} my-app/1.0"
+        )
+        status_header = {
+            "queryId": "q1", "completionStatus": "RESULTS_PRODUCED",
+            "progress": 1.0, "rowCount": 0, "chunkCount": 0,
+        }
+        return (200, {"x-hyperdb-status": json.dumps(status_header)},
+                '{"metadata":{"columns":[]},"data":[],"returnedRows":0}')
+
+    responses.add_callback(
+        responses.POST,
+        "https://test.c360a.salesforce.com/api/v3/query",
+        callback=check_request,
+    )
+
+    client = DataCloudQueryClient(
+        tenant_endpoint="https://test.c360a.salesforce.com",
+        auth_token_getter=mock_token_getter,
+        user_agent="my-app/1.0",
+    )
+    client.execute_query("SELECT 1")
+
+
+@responses.activate
+def test_blank_user_agent_falls_back_to_default():
+    """A blank/whitespace user_agent must not produce a trailing space; it
+    behaves as if no user_agent was supplied."""
+    from salesforce_datacloud_connector import __version__
+
+    def check_request(request):
+        assert request.headers.get("User-Agent") == f"salesforce-cdp-connector/{__version__}"
+        status_header = {
+            "queryId": "q1", "completionStatus": "RESULTS_PRODUCED",
+            "progress": 1.0, "rowCount": 0, "chunkCount": 0,
+        }
+        return (200, {"x-hyperdb-status": json.dumps(status_header)},
+                '{"metadata":{"columns":[]},"data":[],"returnedRows":0}')
+
+    responses.add_callback(
+        responses.POST,
+        "https://test.c360a.salesforce.com/api/v3/query",
+        callback=check_request,
+    )
+
+    client = DataCloudQueryClient(
+        tenant_endpoint="https://test.c360a.salesforce.com",
+        auth_token_getter=mock_token_getter,
+        user_agent="   ",
+    )
+    client.execute_query("SELECT 1")
+
+
+@responses.activate
 def test_auth_token_included():
     """Test that auth token is included in request headers."""
     def check_request(request):

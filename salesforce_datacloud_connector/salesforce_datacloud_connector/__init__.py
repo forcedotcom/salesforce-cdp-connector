@@ -83,6 +83,7 @@ def connect(
     dataspace: Optional[str] = None,
     workload: Optional[str] = None,
     target_org: Optional[str] = None,
+    user_agent: Optional[str] = None,
 ) -> Connection:
     """
     Create a connection to Salesforce Data Cloud.
@@ -106,6 +107,9 @@ def connect(
         workload: Optional workload name for logging/debugging
         target_org: Org alias or username for the sf_cli auth type. If omitted,
                     the Salesforce CLI's own default org is used.
+        user_agent: Optional caller identifier appended to the driver's
+                    User-Agent header (e.g. "my-app/1.0"). The header sent is
+                    "salesforce-cdp-connector/{version} {user_agent}".
 
     Returns:
         Connection instance
@@ -206,7 +210,9 @@ def connect(
     )
 
     # Create and return connection with exchanger
-    return Connection(exchanger, dataspace=dataspace, workload=workload)
+    return Connection(
+        exchanger, dataspace=dataspace, workload=workload, user_agent=user_agent
+    )
 
 
 # Public API
