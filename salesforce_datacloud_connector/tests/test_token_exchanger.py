@@ -588,6 +588,88 @@ def test_tenant_endpoint_schemeless_response_gets_https_prefix():
         assert exchanger.get_tenant_endpoint() == "https://tenant789.pc-rnd.c360a.salesforce.com"
 
 
+@responses.activate
+def test_get_cdp_token_and_tenant_endpoint_pairs_from_same_exchange():
+    """Regression: after a token refresh whose re-exchange returns a CHANGED
+    tenant endpoint, get_cdp_token_and_tenant_endpoint() must return the NEW
+    token paired with the NEW endpoint — never a torn pair mixing one
+    exchange's token with another exchange's endpoint.
+
+    get_cdp_token() and get_tenant_endpoint() are separate calls into
+    _ensure_cache(); if a refresh happens between them, each call is
+    individually correct but the two results can come from different
+    exchanges. get_cdp_token_and_tenant_endpoint() must read the snapshot
+    exactly once so both values always come from the SAME exchange."""
+    # First exchange: token A + endpoint A.
+    responses.add(
+        responses.POST,
+        "https://test.salesforce.com/services/oauth2/token",
+        json={
+            "access_token": "core_token_1",
+            "expires_in": 7200,
+            "instance_url": "https://myorg.my.salesforce.com",
+        },
+        status=200,
+    )
+    responses.add(
+        responses.POST,
+        "https://myorg.my.salesforce.com/services/a360/token",
+        json={
+            "access_token": "cdp_token_A",
+            "expires_in": 100,
+            "instance_url": "https://tenantA.c360a.salesforce.com",
+        },
+        status=200,
+    )
+
+    with patch("jwt.encode", return_value="mock_jwt"):
+        jwt_auth = JWTAuthenticator(
+            login_url="https://test.salesforce.com",
+            client_id="test_client_id",
+            username="test@example.com",
+            jwt_private_key="-----BEGIN RSA PRIVATE KEY-----\nfake\n-----END RSA PRIVATE KEY-----",
+        )
+
+        exchanger = DataCloudTokenExchanger(
+            core_authenticator=jwt_auth,
+            dataspace="default",
+        )
+
+        # Prime the cache with exchange A.
+        token, endpoint = exchanger.get_cdp_token_and_tenant_endpoint()
+        assert token == "cdp_token_A"
+        assert endpoint == "https://tenantA.c360a.salesforce.com"
+
+        # Force a re-exchange that returns a DIFFERENT tenant endpoint + token
+        # (simulates the natural-expiry / invalidate_token() case where a
+        # multi-tenant failover re-exchange lands on a different tenant).
+        exchanger.invalidate_token()
+        responses.add(
+            responses.POST,
+            "https://test.salesforce.com/services/oauth2/token",
+            json={
+                "access_token": "core_token_2",
+                "expires_in": 7200,
+                "instance_url": "https://myorg.my.salesforce.com",
+            },
+            status=200,
+        )
+        responses.add(
+            responses.POST,
+            "https://myorg.my.salesforce.com/services/a360/token",
+            json={
+                "access_token": "cdp_token_B",
+                "expires_in": 3600,
+                "instance_url": "https://tenantB.c360a.salesforce.com",
+            },
+            status=200,
+        )
+
+        token, endpoint = exchanger.get_cdp_token_and_tenant_endpoint()
+        assert token == "cdp_token_B"
+        assert endpoint == "https://tenantB.c360a.salesforce.com"
+
+
 def test_import_from_auth_module():
     """Test that DataCloudTokenExchanger can be imported from auth module."""
     from salesforce_datacloud_connector.auth import DataCloudTokenExchanger

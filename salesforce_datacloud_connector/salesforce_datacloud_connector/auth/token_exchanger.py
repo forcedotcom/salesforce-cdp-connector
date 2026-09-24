@@ -131,6 +131,33 @@ class DataCloudTokenExchanger:
         """
         return self._ensure_cache().token
 
+    def get_cdp_token_and_tenant_endpoint(self) -> tuple[str, str]:
+        """
+        Get a valid CDP token and its tenant endpoint TOGETHER, from ONE snapshot.
+
+        Reads _ensure_cache() exactly once and pulls both fields off that single
+        snapshot, so the returned pair is guaranteed to come from the SAME
+        exchange. This is the atomic counterpart to calling get_cdp_token() and
+        get_tenant_endpoint() separately: two separate calls can each be
+        individually correct yet still observe DIFFERENT exchanges if a refresh
+        (natural expiry or invalidate_token()) lands between them — pairing a
+        fresh token with a stale, pre-refresh tenant endpoint (or vice versa).
+        Any caller that needs both values for the same outgoing request (e.g.
+        building a request URL and its Authorization header) should use this
+        method instead of the two separate getters.
+
+        Returns:
+            (cdp_token, tenant_endpoint) drawn from the same live cache snapshot
+
+        Raises:
+            OperationalError: If token exchange fails, or the exchange did not
+                return a tenant endpoint
+        """
+        snapshot = self._ensure_cache()
+        if snapshot.tenant_endpoint is None:
+            raise OperationalError("Tenant endpoint not available from CDP token exchange")
+        return snapshot.token, snapshot.tenant_endpoint
+
     def get_tenant_endpoint(self) -> str:
         """
         Get the Data Cloud tenant endpoint URL.

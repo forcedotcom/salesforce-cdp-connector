@@ -41,10 +41,15 @@ class Connection:
         self._workload = workload
         self._closed = False
 
-        # Create API client with v3 parameters
+        # Create API client with v3 parameters. The client re-resolves BOTH the
+        # tenant endpoint and the CDP token from a single call to
+        # get_cdp_token_and_tenant_endpoint() on every request (not just once
+        # here), so a token from a re-exchange (e.g. after expiry/invalidation)
+        # can never be paired with a stale, previously-captured endpoint from a
+        # different exchange. See DataCloudTokenExchanger for the atomic
+        # snapshot this depends on.
         self._client = DataCloudQueryClient(
-            tenant_endpoint=token_provider.get_tenant_endpoint(),
-            auth_token_getter=token_provider.get_cdp_token,
+            token_and_endpoint_getter=token_provider.get_cdp_token_and_tenant_endpoint,
             dataspace=dataspace,
             workload=workload,
         )

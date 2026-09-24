@@ -44,29 +44,74 @@ class DataCloudQueryClient:
 
     def __init__(
         self,
-        tenant_endpoint: str,
-        auth_token_getter: callable,
+        tenant_endpoint: Optional[str] = None,
+        auth_token_getter: Optional[callable] = None,
         dataspace: Optional[str] = None,
         workload: Optional[str] = None,
+        token_and_endpoint_getter: Optional[callable] = None,
     ):
         """
         Initialize the API client for off-core Query v3.
 
         Args:
-            tenant_endpoint: Data Cloud tenant endpoint (e.g., https://{tenant}.c360a.salesforce.com)
-            auth_token_getter: Callable that returns a valid CDP token
+            tenant_endpoint: Data Cloud tenant endpoint (e.g., https://{tenant}.c360a.salesforce.com).
+                Legacy/direct-construction path: used as a FIXED endpoint for every
+                request. Ignored (except for the one-time initial value described
+                below) when token_and_endpoint_getter is supplied.
+            auth_token_getter: Callable that returns a valid CDP token. Legacy/
+                direct-construction path: called fresh per request, paired with the
+                fixed tenant_endpoint above. Ignored when token_and_endpoint_getter
+                is supplied.
             dataspace: Data space name (default: "default")
             workload: Optional workload name for observability
+            token_and_endpoint_getter: Callable returning (token, tenant_endpoint)
+                read from ONE atomic snapshot (e.g.
+                DataCloudTokenExchanger.get_cdp_token_and_tenant_endpoint). When
+                supplied, this is the preferred path: EVERY outgoing HTTP attempt
+                (including retries) re-resolves both values from a single call to
+                this getter, so the URL and the Authorization header always come
+                from the SAME token exchange — never a token from one exchange
+                paired with a stale, previously-captured endpoint from another
+                (e.g. after a multi-tenant failover re-exchange). It is called once
+                here purely to populate self.tenant_endpoint for introspection
+                immediately after construction; that cached value is never used to
+                build a request.
         """
-        self.tenant_endpoint = tenant_endpoint.rstrip("/")
+        self._token_and_endpoint_getter = token_and_endpoint_getter
         self.auth_token_getter = auth_token_getter
         self.dataspace = dataspace or "default"
         self.workload = workload
-        self._base_url = f"{self.tenant_endpoint}/api/v3/query"
 
-    def _get_headers(self) -> Dict[str, str]:
-        """Get headers for v3 API requests."""
-        token = self.auth_token_getter()
+        if token_and_endpoint_getter is not None:
+            _initial_token, initial_endpoint = token_and_endpoint_getter()
+            self.tenant_endpoint = initial_endpoint.rstrip("/")
+        else:
+            if tenant_endpoint is None:
+                raise ValueError(
+                    "tenant_endpoint is required when token_and_endpoint_getter is not provided"
+                )
+            self.tenant_endpoint = tenant_endpoint.rstrip("/")
+
+    def _resolve_token_and_endpoint(self) -> Tuple[str, str]:
+        """
+        Resolve (token, tenant_endpoint) for ONE outgoing HTTP attempt.
+
+        When token_and_endpoint_getter was supplied, both values are drawn from a
+        SINGLE call to it — the atomic pair straight from the token exchanger's
+        current snapshot — so a request is never built with a token from one
+        exchange and an endpoint from another. Otherwise falls back to the fixed
+        tenant_endpoint plus a fresh auth_token_getter() call (legacy/direct-
+        construction path, e.g. existing unit tests against a static endpoint).
+
+        Returns:
+            (token, tenant_endpoint) to use for this attempt
+        """
+        if self._token_and_endpoint_getter is not None:
+            return self._token_and_endpoint_getter()
+        return self.auth_token_getter(), self.tenant_endpoint
+
+    def _get_headers(self, token: str) -> Dict[str, str]:
+        """Get headers for v3 API requests, using the token resolved for this attempt."""
         headers = {
             "Authorization": f"Bearer {token}",
             "Content-Type": "application/json",
@@ -85,7 +130,7 @@ class DataCloudQueryClient:
     def _make_request(
         self,
         method: str,
-        url: str,
+        path: str,
         params: Optional[Dict[str, Any]] = None,
         json_data: Optional[Dict[str, Any]] = None,
         retry_count: int = 0,
@@ -93,9 +138,16 @@ class DataCloudQueryClient:
         """
         Make an HTTP request with retry logic.
 
+        The (token, tenant_endpoint) pair — and therefore the full request URL —
+        is re-resolved fresh on EVERY attempt (including retries), atomically via
+        _resolve_token_and_endpoint(), so the URL this attempt targets and the
+        token in its Authorization header always come from the same snapshot.
+
         Args:
             method: HTTP method (GET, POST, DELETE)
-            url: Request URL
+            path: Path appended to the resolved tenant endpoint's
+                "/api/v3/query" base for this request (e.g. "", "/{query_id}",
+                "/{query_id}/rows")
             params: Query parameters
             json_data: JSON request body
             retry_count: Current retry attempt
@@ -106,11 +158,14 @@ class DataCloudQueryClient:
         Raises:
             Exception: If request fails after all retries
         """
+        token, tenant_endpoint = self._resolve_token_and_endpoint()
+        url = f"{tenant_endpoint.rstrip('/')}/api/v3/query{path}"
+
         try:
             response = requests.request(
                 method=method,
                 url=url,
-                headers=self._get_headers(),
+                headers=self._get_headers(token),
                 params=params,
                 json=json_data,
                 timeout=30,
@@ -126,7 +181,7 @@ class DataCloudQueryClient:
                     time.sleep(self.RETRY_WAIT_SECONDS)
 
                     return self._make_request(
-                        method, url, params, json_data, retry_count + 1
+                        method, path, params, json_data, retry_count + 1
                     )
 
                 # All retries exhausted
@@ -139,7 +194,7 @@ class DataCloudQueryClient:
             if retry_count < self.MAX_RETRIES:
                 time.sleep(self.RETRY_WAIT_SECONDS)
                 return self._make_request(
-                    method, url, params, json_data, retry_count + 1
+                    method, path, params, json_data, retry_count + 1
                 )
             raise OperationalError(f"Request failed: {e}") from e
 
@@ -249,7 +304,7 @@ class DataCloudQueryClient:
         if sql_params:
             request_body["parameters"] = sql_params
 
-        response = self._make_request("POST", self._base_url, json_data=request_body)
+        response = self._make_request("POST", "", json_data=request_body)
 
         # Parse response body
         body = response.json()
@@ -283,14 +338,14 @@ class DataCloudQueryClient:
         Raises:
             OperationalError: For network failures
         """
-        url = f"{self._base_url}/{query_id}"
+        path = f"/{query_id}"
         params = {}
 
         # Use long-polling to reduce API calls
         if wait_time_ms is not None:
             params["waitTimeMs"] = min(wait_time_ms, self.MAX_WAIT_TIME_MS)
 
-        response = self._make_request("GET", url, params=params)
+        response = self._make_request("GET", path, params=params)
 
         # Parse status from x-hyperdb-status header (v3)
         status_header = response.headers.get("x-hyperdb-status")
@@ -323,7 +378,7 @@ class DataCloudQueryClient:
             ProgrammingError: If offset is out of range (400)
             OperationalError: For network failures
         """
-        url = f"{self._base_url}/{query_id}/rows"
+        path = f"/{query_id}/rows"
         params = {
             "offset": offset,
             "limit": row_limit,
@@ -331,7 +386,7 @@ class DataCloudQueryClient:
         }
 
         try:
-            response = self._make_request("GET", url, params=params)
+            response = self._make_request("GET", path, params=params)
             return QueryResponse.from_dict(response.json())
         except Exception as e:
             # Handle "Request out of range" gracefully (400 error)
@@ -350,8 +405,8 @@ class DataCloudQueryClient:
         Raises:
             OperationalError: For network failures
         """
-        url = f"{self._base_url}/{query_id}"
-        self._make_request("DELETE", url)
+        path = f"/{query_id}"
+        self._make_request("DELETE", path)
 
     def poll_until_complete(
         self, query_id: str, poll_interval_ms: int = 5000, timeout_seconds: int = 300

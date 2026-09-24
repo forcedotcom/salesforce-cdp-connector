@@ -61,6 +61,10 @@ def _mock_token_provider():
     provider = Mock()
     provider.get_tenant_endpoint.return_value = "https://test.c360a.salesforce.com"
     provider.get_cdp_token.return_value = "mock_cdp_token"
+    provider.get_cdp_token_and_tenant_endpoint.return_value = (
+        "mock_cdp_token",
+        "https://test.c360a.salesforce.com",
+    )
     return provider
 
 

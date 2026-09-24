@@ -2,7 +2,8 @@
 Tests for DB-API 2.0 Connection.
 """
 
-from unittest.mock import Mock
+import json
+from unittest.mock import Mock, patch
 
 import pytest
 
@@ -17,6 +18,10 @@ def create_mock_token_provider():
     provider = Mock()
     provider.get_tenant_endpoint.return_value = "https://test.c360a.salesforce.com"
     provider.get_cdp_token.return_value = "mock_cdp_token"
+    provider.get_cdp_token_and_tenant_endpoint.return_value = (
+        "mock_cdp_token",
+        "https://test.c360a.salesforce.com",
+    )
     return provider
 
 
@@ -369,3 +374,96 @@ def test_concurrent_close_and_cursor_race_is_benign():
         r == "closed" or r == "interface_error" or isinstance(r, Cursor)
         for r in results
     )
+
+
+# ---------------------------------------------------------------------------
+# Regression: token + tenant-endpoint must travel together per request.
+#
+# A Connection wraps a DataCloudTokenExchanger, whose token and tenant
+# endpoint are published together as one atomic snapshot per exchange (see
+# auth/token_exchanger.py). But Connection.__init__ used to capture the
+# tenant endpoint ONCE (at construction time) while wiring a fresh-token-per-
+# request callback for the token. After a re-exchange that returns a
+# DIFFERENT tenant endpoint (e.g. multi-tenant failover after the CDP token
+# is invalidated/expires), outgoing requests would keep hitting the
+# ORIGINALLY-captured endpoint with the NEW token — a torn pair the exchanger
+# itself was designed to prevent.
+# ---------------------------------------------------------------------------
+
+
+class _FakeResponse:
+    """Minimal stand-in for requests.Response, matching test_threadsafety.py's
+    fake so query-status headers can be supplied without hitting the network."""
+
+    def __init__(self, status_code, json_body, headers=None):
+        self.status_code = status_code
+        self._json = json_body
+        self.headers = headers or {}
+        self.text = ""
+
+    @property
+    def ok(self):
+        return 200 <= self.status_code < 300
+
+    def json(self):
+        return self._json
+
+
+def _status_header(query_id):
+    return {
+        "x-hyperdb-status": json.dumps(
+            {
+                "queryId": query_id,
+                "completionStatus": "RESULTS_PRODUCED",
+                "progress": 1.0,
+                "rowCount": 0,
+                "chunkCount": 0,
+            }
+        )
+    }
+
+
+def test_query_after_endpoint_change_targets_new_endpoint_with_new_token():
+    """Regression: once the token provider's (token, tenant_endpoint) pair
+    changes — simulating a re-exchange after expiry/invalidation that landed
+    on a different tenant — a subsequent query MUST be sent to the NEW
+    endpoint using the NEW token. It must never send the new token to the
+    stale, originally-captured endpoint."""
+    provider = Mock()
+    # Endpoint A / token A at construction time...
+    provider.get_tenant_endpoint.return_value = "https://tenantA.c360a.salesforce.com"
+    provider.get_cdp_token.return_value = "token_A"
+    provider.get_cdp_token_and_tenant_endpoint.return_value = (
+        "token_A",
+        "https://tenantA.c360a.salesforce.com",
+    )
+
+    conn = Connection(provider)
+
+    # ...then the exchanger performs a re-exchange (expiry/invalidation) that
+    # returns a DIFFERENT tenant endpoint paired with a new token.
+    provider.get_tenant_endpoint.return_value = "https://tenantB.c360a.salesforce.com"
+    provider.get_cdp_token.return_value = "token_B"
+    provider.get_cdp_token_and_tenant_endpoint.return_value = (
+        "token_B",
+        "https://tenantB.c360a.salesforce.com",
+    )
+
+    captured = {}
+
+    def fake_request(method, url, headers=None, params=None, json=None, timeout=None):
+        captured["url"] = url
+        captured["authorization"] = headers.get("Authorization") if headers else None
+        return _FakeResponse(200, {"metadata": {"columns": []}, "data": [], "returnedRows": 0},
+                              headers=_status_header("q1"))
+
+    with patch("requests.request", side_effect=fake_request):
+        cursor = conn.cursor()
+        cursor.execute("SELECT 1")
+
+    # The request must have gone to the NEW endpoint...
+    assert captured["url"].startswith("https://tenantB.c360a.salesforce.com")
+    # ...carrying the NEW token...
+    assert captured["authorization"] == "Bearer token_B"
+    # ...never the new token paired with the stale endpoint A.
+    assert "tenantA" not in captured["url"]
