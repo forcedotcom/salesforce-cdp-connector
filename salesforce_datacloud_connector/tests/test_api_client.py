@@ -189,6 +189,7 @@ def test_execute_query_includes_settings_in_request_body():
     client = DataCloudQueryClient(
         tenant_endpoint="https://test.c360a.salesforce.com",
         auth_token_getter=mock_token_getter,
+        output_format="json",
     )
     client.execute_query("SELECT 1", settings={"time_zone": "UTC"})
 
@@ -218,6 +219,7 @@ def test_execute_query_merges_default_and_per_call_settings():
         tenant_endpoint="https://test.c360a.salesforce.com",
         auth_token_getter=mock_token_getter,
         query_settings={"time_zone": "UTC", "lc_time": "en_US"},
+        output_format="json",
     )
     client.execute_query("SELECT 1", settings={"time_zone": "America/New_York"})
 
