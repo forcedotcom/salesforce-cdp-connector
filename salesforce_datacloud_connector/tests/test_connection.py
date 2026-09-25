@@ -193,6 +193,15 @@ def test_no_user_agent_by_default():
     assert conn._client.user_agent is None
 
 
+def test_connection_passes_query_settings_to_client():
+    """Connection(query_settings=...) configures connection-wide default settings
+    on the API client, applied to every query on this connection."""
+    auth = create_mock_token_provider()
+    conn = Connection(auth, query_settings={"time_zone": "UTC"})
+
+    assert conn._client.default_settings == {"time_zone": "UTC"}
+
+
 def test_connect_wires_token_exchanger():
     """Test that connect() creates DataCloudTokenExchanger and passes it to Connection."""
     from unittest.mock import patch
@@ -278,6 +287,30 @@ def test_connect_wires_user_agent():
 
             assert conn.user_agent == "my-app/1.0"
             assert conn._client.user_agent == "my-app/1.0"
+
+            conn.close()
+
+
+def test_connect_passes_query_settings():
+    """connect(query_settings=...) flows through Connection to the API client's
+    connection-level default settings."""
+    from unittest.mock import patch
+    import salesforce_datacloud_connector as sfdc
+    from salesforce_datacloud_connector.auth.token_exchanger import DataCloudTokenExchanger
+    from salesforce_datacloud_connector.auth.oauth import JWTAuthenticator
+
+    with patch.object(JWTAuthenticator, '_fetch_new_token', return_value=("core_token", 7200, "https://test.salesforce.com")), \
+         patch.object(DataCloudTokenExchanger, '_exchange_token', return_value=("cdp_token", 7200, "https://tenant.c360a.salesforce.com")):
+            conn = sfdc.connect(
+                login_url="https://login.salesforce.com",
+                auth_type="jwt",
+                username="test@example.com",
+                client_id="test_client_id",
+                jwt_private_key="-----BEGIN PRIVATE KEY-----\ntest_key\n-----END PRIVATE KEY-----",
+                query_settings={"time_zone": "UTC"},
+            )
+
+            assert conn._client.default_settings == {"time_zone": "UTC"}
 
             conn.close()
 

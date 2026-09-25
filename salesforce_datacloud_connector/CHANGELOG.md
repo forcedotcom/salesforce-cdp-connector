@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Query settings support: `connect(query_settings=...)` sets connection-wide
+  default query settings (e.g. `{"time_zone": "UTC"}`), and
+  `cursor.execute(operation, parameters, settings=...)` supplies or overrides
+  settings for a single query. Per-call settings take precedence over the
+  connection-level defaults on key collision. Settings map to the server's
+  Hyper connection/session settings — see
+  https://tableau.github.io/hyper-db/docs/hyper-api/connection#connection-settings.
+
 ### Changed
 - `cursor.rowcount` now reports the total number of rows in the result set
   after `execute()`, as read from the server's query status, instead of always
