@@ -5,7 +5,7 @@ Postgres metadata catalog emits CAPITALIZED names. Both must convert and map
 identically (Finding C).
 """
 
-from datetime import date, datetime
+from datetime import date, datetime, time
 from decimal import Decimal
 
 import pytest
@@ -63,6 +63,11 @@ class TestConvertLowercaseV3Types:
         assert result == date(2024, 1, 15)
         assert isinstance(result, date)
 
+    def test_time_is_time(self):
+        result = convert_datacloud_value("14:30:00", "time")
+        assert result == time(14, 30, 0)
+        assert isinstance(result, time)
+
     def test_boolean_from_strings(self):
         assert convert_datacloud_value("true", "boolean") is True
         assert convert_datacloud_value("false", "boolean") is False
@@ -76,6 +81,53 @@ class TestConvertLowercaseV3Types:
     def test_text_is_str(self):
         assert convert_datacloud_value(123, "text") == "123"
         assert isinstance(convert_datacloud_value(123, "text"), str)
+
+    def test_bool_from_bool(self):
+        assert convert_datacloud_value(True, "bool") is True
+        assert convert_datacloud_value(False, "bool") is False
+
+    def test_smallint_and_oid_are_int(self):
+        assert convert_datacloud_value("7", "smallint") == 7
+        assert isinstance(convert_datacloud_value("7", "smallint"), int)
+        assert convert_datacloud_value(100000, "oid") == 100000
+        assert isinstance(convert_datacloud_value(100000, "oid"), int)
+
+    def test_float4_and_float8_are_float(self):
+        assert convert_datacloud_value("1.5", "float4") == pytest.approx(1.5)
+        assert isinstance(convert_datacloud_value("1.5", "float4"), float)
+        assert convert_datacloud_value("2.25", "float8") == pytest.approx(2.25)
+        assert isinstance(convert_datacloud_value("2.25", "float8"), float)
+
+    def test_char_is_str(self):
+        assert convert_datacloud_value("x", "char") == "x"
+        assert isinstance(convert_datacloud_value("x", "char"), str)
+
+    def test_bytea_passes_through_native_bytes_unchanged(self):
+        """bytea is Arrow-only (the JSON sink rejects it with a 501), so
+        nanoarrow has already decoded it to native bytes by the time it
+        reaches here -- no base64 decoding is needed."""
+        assert convert_datacloud_value(b"hello", "bytea") == b"hello"
+        assert isinstance(convert_datacloud_value(b"hello", "bytea"), bytes)
+
+    def test_json_arrow_raw_string_is_parsed(self):
+        """The Arrow output format gives json columns as a raw JSON-encoded
+        string (confirmed live); parse it so callers see the same Python
+        value regardless of output format."""
+        result = convert_datacloud_value('{"a":1}', "json")
+        assert result == {"a": 1}
+
+    def test_json_already_parsed_dict_passes_through_unchanged(self):
+        """The JSON output format pre-parses json columns into native
+        dicts/lists already; str()-ing that would corrupt it into repr()."""
+        value = {"a": 1}
+        assert convert_datacloud_value(value, "json") is value
+
+    def test_interval_passes_through_unchanged(self):
+        """Neither wire representation (ISO-8601 string over JSON, a raw
+        (months, days, nanoseconds) tuple over Arrow) maps losslessly onto a
+        Python stdlib type, so interval is a deliberate pass-through."""
+        assert convert_datacloud_value("P1D", "interval") == "P1D"
+        assert convert_datacloud_value((0, 1, 7200000000000), "interval") == (0, 1, 7200000000000)
 
 
 class TestConvertCapitalizedTypesRegression:
@@ -96,6 +148,9 @@ class TestConvertCapitalizedTypesRegression:
 
     def test_capitalized_date(self):
         assert convert_datacloud_value("2024-01-15", "Date") == date(2024, 1, 15)
+
+    def test_capitalized_time(self):
+        assert convert_datacloud_value("14:30:00", "Time") == time(14, 30, 0)
 
     def test_capitalized_boolean(self):
         assert convert_datacloud_value("true", "Boolean") is True
@@ -135,6 +190,10 @@ class TestBuildDescriptionTuple:
         desc = build_description_tuple({"name": "label", "type": "varchar"})
         assert desc[1] == STRING
 
+    def test_lowercase_time_maps_to_datetime(self):
+        desc = build_description_tuple({"name": "start", "type": "time"})
+        assert desc[1] == DATETIME
+
     def test_capitalized_numeric_still_maps_to_number(self):
         desc = build_description_tuple({"name": "age", "type": "Numeric", "scale": 0})
         assert desc[1] == NUMBER
@@ -142,6 +201,15 @@ class TestBuildDescriptionTuple:
     def test_unknown_type_defaults_to_string(self):
         desc = build_description_tuple({"name": "mystery", "type": "geography"})
         assert desc[1] == STRING
+
+    def test_bytea_maps_to_binary(self):
+        from salesforce_datacloud_connector.types import BINARY
+        desc = build_description_tuple({"name": "payload", "type": "bytea"})
+        assert desc[1] == BINARY
+
+    def test_smallint_and_oid_map_to_number(self):
+        assert build_description_tuple({"name": "n", "type": "smallint"})[1] == NUMBER
+        assert build_description_tuple({"name": "n", "type": "oid"})[1] == NUMBER
 
     def test_nullable_and_precision_passthrough(self):
         desc = build_description_tuple(

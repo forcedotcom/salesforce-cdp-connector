@@ -16,7 +16,8 @@ import pyarrow as pa
 
 def build_arrow_ipc_bytes(fields: Sequence[pa.Field], rows: List[Tuple[Any, ...]]) -> bytes:
     """
-    Serialize rows into an Arrow IPC stream matching the given pyarrow schema fields.
+    Serialize rows into a single-batch Arrow IPC stream matching the given
+    pyarrow schema fields.
 
     Args:
         fields: pyarrow Field objects defining column name/type/nullability
@@ -26,13 +27,37 @@ def build_arrow_ipc_bytes(fields: Sequence[pa.Field], rows: List[Tuple[Any, ...]
         Raw Arrow IPC stream bytes, as the v3 API would return them in the
         response body when Accept negotiates application/vnd.apache.arrow.stream
     """
+    return build_arrow_ipc_bytes_multi_batch(fields, [rows] if rows else [])
+
+
+def build_arrow_ipc_bytes_multi_batch(
+    fields: Sequence[pa.Field], row_batches: List[List[Tuple[Any, ...]]]
+) -> bytes:
+    """
+    Serialize one or more row batches into a single Arrow IPC stream, each
+    batch written as its own record batch (`writer.write_batch()` call).
+
+    QS can split a single query result across multiple record batches within
+    one IPC stream rather than one batch per response; this exercises that
+    the connector's `stream.read_all()` call in
+    QueryResponse.from_arrow_bytes concatenates all of them, not just the
+    first.
+
+    Args:
+        fields: pyarrow Field objects defining column name/type/nullability
+        row_batches: A list of row-tuple lists, one per record batch. An
+            empty list produces a valid schema-only, zero-batch IPC stream.
+
+    Returns:
+        Raw Arrow IPC stream bytes.
+    """
     schema = pa.schema(fields)
-    columns = list(zip(*rows)) if rows else [[] for _ in fields]
-    arrays = [pa.array(column, type=field.type) for column, field in zip(columns, fields)]
 
     sink = io.BytesIO()
     with pa.ipc.new_stream(sink, schema) as writer:
-        if rows:
+        for rows in row_batches:
+            columns = list(zip(*rows)) if rows else [[] for _ in fields]
+            arrays = [pa.array(column, type=field.type) for column, field in zip(columns, fields)]
             writer.write_batch(pa.record_batch(arrays, schema=schema))
     return sink.getvalue()
 

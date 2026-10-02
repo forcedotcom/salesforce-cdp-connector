@@ -377,24 +377,17 @@ def test_named_translation_leaves_type_casts_alone_v3():
 @responses.activate
 def test_get_query_status_v3():
     """Test getting query status (v3 API)."""
-    status_header = {
-        "queryId": "query123",
-        "completionStatus": "FINISHED",
-        "progress": 1.0,
-        "rowCount": 1000,
-        "chunkCount": 1,
-    }
-
+    # getQueryStatusV3 returns QueryStatus as the JSON body directly; it never
+    # sets x-hyperdb-status (that header is only set by the POST /v3/query path).
     responses.add(
         responses.GET,
         "https://test.c360a.salesforce.com/api/v3/query/query123",
         json={
-            "metadata": {"columns": []},
-            "data": None,
-            "returnedRows": 0
-        },
-        headers={
-            "x-hyperdb-status": json.dumps(status_header)
+            "queryId": "query123",
+            "completionStatus": "FINISHED",
+            "progress": 1.0,
+            "rowCount": 1000,
+            "chunkCount": 1,
         },
         status=200,
     )
@@ -515,23 +508,18 @@ def test_error_response_v3():
 @responses.activate
 def test_poll_until_complete_v3():
     """Test polling until query completes (v3 API)."""
+    # getQueryStatusV3 returns QueryStatus as the JSON body directly; it never
+    # sets x-hyperdb-status (that header is only set by the POST /v3/query path).
     # First poll: still running
     responses.add(
         responses.GET,
         "https://test.c360a.salesforce.com/api/v3/query/query123",
         json={
-            "metadata": {"columns": []},
-            "data": None,
-            "returnedRows": 0
-        },
-        headers={
-            "x-hyperdb-status": json.dumps({
-                "queryId": "query123",
-                "completionStatus": "RUNNING_OR_UNSPECIFIED",
-                "progress": 0.5,
-                "rowCount": 0,
-                "chunkCount": 0,
-            })
+            "queryId": "query123",
+            "completionStatus": "RUNNING_OR_UNSPECIFIED",
+            "progress": 0.5,
+            "rowCount": 0,
+            "chunkCount": 0,
         },
         status=200,
     )
@@ -541,18 +529,11 @@ def test_poll_until_complete_v3():
         responses.GET,
         "https://test.c360a.salesforce.com/api/v3/query/query123",
         json={
-            "metadata": {"columns": []},
-            "data": None,
-            "returnedRows": 0
-        },
-        headers={
-            "x-hyperdb-status": json.dumps({
-                "queryId": "query123",
-                "completionStatus": "FINISHED",
-                "progress": 1.0,
-                "rowCount": 100,
-                "chunkCount": 1,
-            })
+            "queryId": "query123",
+            "completionStatus": "FINISHED",
+            "progress": 1.0,
+            "rowCount": 100,
+            "chunkCount": 1,
         },
         status=200,
     )
@@ -574,14 +555,16 @@ def test_get_query_status_with_long_polling():
     """Test query status with long-polling."""
     def check_request(request):
         assert "waitTimeMs" in request.url
-        status_header = {
+        # getQueryStatusV3 returns QueryStatus as the JSON body directly; it
+        # never sets x-hyperdb-status (that header is only set by POST /v3/query).
+        status_body = {
             "queryId": "q1",
             "completionStatus": "RUNNING_OR_UNSPECIFIED",
             "progress": 0.8,
             "rowCount": 0,
             "chunkCount": 0
         }
-        return (200, {"x-hyperdb-status": json.dumps(status_header)}, '{"metadata":{"columns":[]},"data":null,"returnedRows":0}')
+        return (200, {}, json.dumps(status_body))
 
     responses.add_callback(
         responses.GET,
@@ -1000,8 +983,38 @@ def test_execute_query_arrow_default_sends_arrow_accept_and_parses_body():
     assert response.metadata[0].type == "varchar"
     assert response.metadata[1].type == "numeric"
     assert response.returned_rows == 2
+
+
+@responses.activate
+def test_execute_query_arrow_empty_body_means_still_running_not_a_parse_error():
+    """Under ADAPTIVE transfer mode, a query with no rows yet gets a 200 with
+    x-hyperdb-status set but a zero-length Arrow body (QS writes `new byte[0]`
+    when there's no Hyper binary part yet) -- this must surface as a zero-row,
+    still-running response, not an Arrow parse failure."""
+    def check_request(request):
+        status_header = {
+            "queryId": "q1", "completionStatus": "RUNNING",
+            "progress": 0.0, "rowCount": 0, "chunkCount": 0,
+        }
+        return (200, {"x-hyperdb-status": json.dumps(status_header)}, b"")
+
+    responses.add_callback(
+        responses.POST,
+        "https://test.c360a.salesforce.com/api/v3/query",
+        callback=check_request,
+    )
+
+    client = DataCloudQueryClient(
+        tenant_endpoint="https://test.c360a.salesforce.com",
+        auth_token_getter=mock_token_getter,
+    )
+
+    response = client.execute_query("SELECT name, age FROM users")
+
+    assert response.data == []
+    assert response.metadata == []
+    assert response.status.completion_status == "RUNNING"
     assert response.status.query_id == "q1"
-    assert response.status.is_complete()
 
 
 @responses.activate
@@ -1038,12 +1051,14 @@ def test_get_query_status_sends_json_accept_even_when_client_is_arrow():
     client configured for Arrow output must request JSON for status."""
     def check_request(request):
         assert request.headers.get("Accept") == "application/json"
-        status_header = {
+        # getQueryStatusV3 returns QueryStatus as the JSON body directly and
+        # never sets x-hyperdb-status (that header is only set by the POST
+        # /v3/query path) -- no header here is intentional, not an oversight.
+        status_body = {
             "queryId": "q1", "completionStatus": "FINISHED",
             "progress": 1.0, "rowCount": 5, "chunkCount": 1,
         }
-        return (200, {"x-hyperdb-status": json.dumps(status_header)},
-                '{"metadata":{"columns":[]},"data":null,"returnedRows":0}')
+        return (200, {}, json.dumps(status_body))
 
     responses.add_callback(
         responses.GET,
