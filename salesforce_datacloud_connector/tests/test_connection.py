@@ -2,10 +2,14 @@
 Tests for DB-API 2.0 Connection.
 """
 
-from unittest.mock import Mock
+import json as jsonlib
+import threading
+from concurrent.futures import ThreadPoolExecutor
+from unittest.mock import Mock, patch
 
 import pytest
 
+import salesforce_datacloud_connector as sfdc
 from salesforce_datacloud_connector.connection import Connection
 from salesforce_datacloud_connector.cursor import Cursor
 from salesforce_datacloud_connector.exceptions import InterfaceError
@@ -51,6 +55,49 @@ def test_create_multiple_cursors():
     assert cursor1 is not cursor2
     assert isinstance(cursor1, Cursor)
     assert isinstance(cursor2, Cursor)
+
+
+def test_threads_share_connection_with_separate_cursors():
+    """Concurrent queries on one connection keep each cursor's rows separate."""
+    assert sfdc.threadsafety == 2
+    conn = Connection(create_mock_token_provider())
+    requests_started = threading.Barrier(8)
+
+    def fake_request(method, url, headers=None, params=None, json=None, timeout=None):
+        requests_started.wait(timeout=5)
+        marker = json["sql"].split("'")[1]
+        response = Mock(ok=True, status_code=200, text="")
+        response.headers = {
+            "x-hyperdb-status": jsonlib.dumps(
+                {
+                    "queryId": f"query_{marker}",
+                    "completionStatus": "RESULTS_PRODUCED",
+                    "progress": 1.0,
+                    "rowCount": 1,
+                    "chunkCount": 1,
+                }
+            )
+        }
+        response.json.return_value = {
+            "metadata": {"columns": [{"name": "m", "type": "varchar", "nullable": True}]},
+            "data": [[marker]],
+            "returnedRows": 1,
+        }
+        return response
+
+    def run_query(i):
+        cursor = conn.cursor()
+        try:
+            cursor.execute(f"SELECT '{i}' AS m")
+            return cursor.fetchall()
+        finally:
+            cursor.close()
+
+    with patch("requests.request", side_effect=fake_request):
+        with ThreadPoolExecutor(max_workers=8) as pool:
+            results = list(pool.map(run_query, range(8)))
+
+    assert results == [[(str(i),)] for i in range(8)]
 
 
 def test_close_connection():

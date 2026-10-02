@@ -7,6 +7,7 @@ Data Cloud (CDP) tokens via the /services/a360/token endpoint.
 
 from __future__ import annotations
 
+import threading
 import time
 from typing import Optional
 
@@ -51,6 +52,8 @@ class DataCloudTokenExchanger:
         self._cached_cdp_token: Optional[str] = None
         self._token_expiry: Optional[float] = None
         self._tenant_endpoint: Optional[str] = None
+        # A Connection shares this exchanger across cursors and threads.
+        self._lock = threading.Lock()
 
     def get_cdp_token(self) -> str:
         """
@@ -66,6 +69,11 @@ class DataCloudTokenExchanger:
         Raises:
             OperationalError: If token exchange fails
         """
+        with self._lock:
+            return self._get_cdp_token_locked()
+
+    def _get_cdp_token_locked(self) -> str:
+        """Read or refresh the cache while holding _lock."""
         current_time = time.time()
 
         # Check cache — alive until exact expiry, no buffer.
@@ -104,14 +112,15 @@ class DataCloudTokenExchanger:
         Raises:
             OperationalError: If no token exchange has occurred yet
         """
-        if self._tenant_endpoint is None:
-            # Trigger exchange to get tenant endpoint
-            self.get_cdp_token()
+        with self._lock:
+            if self._tenant_endpoint is None:
+                # Trigger exchange to get tenant endpoint.
+                self._get_cdp_token_locked()
 
-        if self._tenant_endpoint is None:
-            raise OperationalError("Tenant endpoint not available from CDP token exchange")
+            if self._tenant_endpoint is None:
+                raise OperationalError("Tenant endpoint not available from CDP token exchange")
 
-        return self._tenant_endpoint
+            return self._tenant_endpoint
 
     def invalidate_token(self):
         """
@@ -119,8 +128,9 @@ class DataCloudTokenExchanger:
 
         Note: This does NOT invalidate the core authenticator's token.
         """
-        self._cached_cdp_token = None
-        self._token_expiry = None
+        with self._lock:
+            self._cached_cdp_token = None
+            self._token_expiry = None
 
     def _exchange_token(
         self, instance_url: str, core_token: str
