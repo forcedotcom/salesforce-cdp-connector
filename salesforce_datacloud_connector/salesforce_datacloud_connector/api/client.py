@@ -344,22 +344,30 @@ class DataCloudQueryClient:
             "POST", self._base_url, json_data=request_body, accept=self._data_accept_header
         )
 
-        # Parse response body. The x-hyperdb-status header (below) always
-        # carries status as JSON regardless of body format, so this only
-        # branches on how the row/metadata payload itself is decoded.
-        if self._output_format == "arrow":
-            query_response = QueryResponse.from_arrow_bytes(response.content)
-        else:
-            query_response = QueryResponse.from_dict(response.json())
-
-        # Parse status from x-hyperdb-status header (v3). The header carries the
-        # queryId/rowCount/completionStatus the cursor relies on; the body never
-        # contains status in v3, so a missing header is a hard error, not None.
+        # Parse status from x-hyperdb-status header (v3) first. The header carries
+        # the queryId/rowCount/completionStatus the cursor relies on, and must be
+        # read before the body: under the ADAPTIVE transfer mode this client always
+        # sends, a query that hasn't produced rows yet still gets a 200 with this
+        # header set but a zero-length Arrow body (QueryV3ResponseArrowHttpMessageConverter
+        # writes `new byte[0]` when there's no Hyper binary part yet).
         status_header = response.headers.get("x-hyperdb-status")
         if not status_header:
             raise OperationalError("Missing x-hyperdb-status header in query response")
 
         status_data = json.loads(status_header)
+
+        # Parse response body. A zero-length Arrow body means Hyper hasn't produced
+        # any rows yet (still running) rather than a malformed response -- unlike an
+        # empty-but-valid IPC stream (schema message present, zero rows), which
+        # from_arrow_bytes handles on its own.
+        if self._output_format == "arrow":
+            if not response.content:
+                query_response = QueryResponse(data=[], metadata=[], returned_rows=0)
+            else:
+                query_response = QueryResponse.from_arrow_bytes(response.content)
+        else:
+            query_response = QueryResponse.from_dict(response.json())
+
         query_response.status = QueryStatus.from_dict(status_data)
 
         return query_response
@@ -375,7 +383,7 @@ class DataCloudQueryClient:
             wait_time_ms: Milliseconds to wait before returning (long-polling, max 10000)
 
         Returns:
-            QueryStatus object (parsed from x-hyperdb-status header)
+            QueryStatus object (parsed from the JSON response body)
 
         Raises:
             OperationalError: For network failures
@@ -389,13 +397,10 @@ class DataCloudQueryClient:
 
         response = self._make_request("GET", url, params=params)
 
-        # Parse status from x-hyperdb-status header (v3)
-        status_header = response.headers.get("x-hyperdb-status")
-        if not status_header:
-            raise OperationalError("Missing x-hyperdb-status header in response")
-
-        status_data = json.loads(status_header)
-        return QueryStatus.from_dict(status_data)
+        # Unlike execute_query's POST, this endpoint never sets x-hyperdb-status
+        # (QueryV3Controller.getQueryStatusV3 returns the status as the JSON
+        # body directly); parse the body instead of looking for the header.
+        return QueryStatus.from_dict(response.json())
 
     def fetch_results(
         self,

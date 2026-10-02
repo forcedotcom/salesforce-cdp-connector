@@ -4,13 +4,18 @@ End-to-end integration tests for the driver.
 These tests verify the complete flow: connect → execute → fetch → close
 """
 
+import datetime
 import json
+from decimal import Decimal
 
+import pyarrow as pa
 import pytest
 import responses
 
 import salesforce_datacloud_connector as sfdc
 from salesforce_datacloud_connector.exceptions import NotSupportedError, ProgrammingError
+
+from ._arrow_fixtures import build_arrow_ipc_bytes
 
 
 @responses.activate
@@ -90,6 +95,100 @@ def test_end_to_end_sync_query():
         cursor.close()
     finally:
         conn.close()
+
+
+@responses.activate
+def test_end_to_end_arrow_default_comprehensive_type_palette():
+    """Test the complete connect → execute → fetch flow using the Arrow
+    output format (the connector's default -- no output_format override),
+    across a broad type palette, confirming ColumnMetadata.type and
+    convert_datacloud_value agree end to end for every type reachable only
+    via Arrow's physical type system (smallint/oid/float4/float8/bytea/
+    interval), not just the JSON-wire names covered elsewhere."""
+    responses.add(
+        responses.POST,
+        "https://test.salesforce.com/services/oauth2/token",
+        json={"access_token": "token123", "expires_in": 7200, "instance_url": "https://myorg.my.salesforce.com"},
+        status=200,
+    )
+    responses.add(
+        responses.POST,
+        "https://myorg.my.salesforce.com/services/a360/token",
+        json={"access_token": "cdp_token", "expires_in": 7200, "instance_url": "https://myorg.my.salesforce.com"},
+        status=200,
+    )
+
+    fields = [
+        pa.field("flag", pa.bool_(), nullable=True),
+        pa.field("small", pa.int16(), nullable=True),
+        pa.field("cnt", pa.int32(), nullable=True),
+        pa.field("big", pa.int64(), nullable=True),
+        pa.field("row_id", pa.uint32(), nullable=True),
+        pa.field("ratio", pa.float32(), nullable=True),
+        pa.field("amount", pa.float64(), nullable=True),
+        pa.field("price", pa.decimal128(20, 3), nullable=True),
+        pa.field("name", pa.string(), nullable=True),
+        pa.field("payload", pa.binary(), nullable=True),
+        pa.field("day", pa.date32(), nullable=True),
+        pa.field("start_time", pa.time64("us"), nullable=True),
+        pa.field("created", pa.timestamp("us"), nullable=True),
+        pa.field("created_tz", pa.timestamp("us", tz="UTC"), nullable=True),
+        pa.field("span", pa.month_day_nano_interval(), nullable=True),
+    ]
+    row = (
+        True, 7, 42, 9000000000, 100000, 1.5, 2.25, Decimal("12345.678"), "Alice", b"hello",
+        datetime.date(2024, 1, 15),
+        datetime.time(14, 30, 0),
+        datetime.datetime(2024, 1, 15, 10, 30, 0),
+        datetime.datetime(2024, 1, 15, 10, 30, 0, tzinfo=datetime.timezone.utc),
+        (0, 1, 7200000000000),
+    )
+    arrow_body = build_arrow_ipc_bytes(fields, [row])
+
+    def check_request(request):
+        assert request.headers.get("Accept") == "application/vnd.apache.arrow.stream"
+        status_header = {
+            "queryId": "q1", "completionStatus": "RESULTS_PRODUCED",
+            "progress": 1.0, "rowCount": 1, "chunkCount": 1,
+        }
+        return (200, {"x-hyperdb-status": json.dumps(status_header)}, arrow_body)
+
+    responses.add_callback(
+        responses.POST,
+        "https://myorg.my.salesforce.com/api/v3/query",
+        callback=check_request,
+    )
+
+    with sfdc.connect(
+        login_url="https://test.salesforce.com",
+        auth_type="username_password",
+        username="test@example.com",
+        password="password123",
+        client_id="client_id",
+        client_secret="client_secret",
+    ) as conn:
+        with conn.cursor() as cursor:
+            cursor.execute("SELECT * FROM everything")
+
+            expected_types = [
+                "bool", "smallint", "integer", "bigint", "oid", "float4", "float8", "numeric",
+                "varchar", "bytea", "date", "time", "timestamp", "timestamptz", "interval",
+            ]
+            assert [col[0] for col in cursor.description] == [f.name for f in fields]
+            assert [col.type for col in cursor._metadata] == expected_types
+
+            rows = cursor.fetchall()
+            assert len(rows) == 1
+            assert rows[0] == (
+                True, 7, 42, 9000000000, 100000,
+                pytest.approx(1.5), pytest.approx(2.25), Decimal("12345.678"),
+                "Alice", b"hello",
+                datetime.date(2024, 1, 15),
+                datetime.time(14, 30, 0),
+                datetime.datetime(2024, 1, 15, 10, 30, 0),
+                datetime.datetime(2024, 1, 15, 10, 30, 0, tzinfo=datetime.timezone.utc),
+                (0, 1, 7200000000000),
+            )
 
 
 @responses.activate
@@ -335,24 +434,18 @@ def test_async_query_with_polling():
         status=200,
     )
 
-    # Mock status polling (complete)
-    poll_status_header = {
-        "queryId": "q1",
-        "completionStatus": "FINISHED",
-        "progress": 1.0,
-        "rowCount": 1,
-        "chunkCount": 1,
-    }
+    # Mock status polling (complete). getQueryStatusV3 returns QueryStatus as
+    # the JSON body directly; it never sets x-hyperdb-status (that header is
+    # only set by the POST /v3/query path).
     responses.add(
         responses.GET,
         "https://myorg.my.salesforce.com/api/v3/query/q1",
         json={
-            "metadata": {"columns": []},
-            "data": None,
-            "returnedRows": 0
-        },
-        headers={
-            "x-hyperdb-status": json.dumps(poll_status_header)
+            "queryId": "q1",
+            "completionStatus": "FINISHED",
+            "progress": 1.0,
+            "rowCount": 1,
+            "chunkCount": 1,
         },
         status=200,
     )

@@ -15,7 +15,12 @@ dependencies = [
     "cryptography>=41.0.0",
     "pyjwt>=2.8.0",
     "python-dateutil>=2.8.0",
-    "nanoarrow>=0.6.0",
+    # Upper-bounded (not pinned exactly) because nanoarrow>=0.9.0 requires
+    # Python>=3.9, which would silently break this project's own
+    # requires-python>=3.8 floor. Tests run against 0.9.0; the bound still
+    # keeps a future nanoarrow release from changing how Arrow timestamps
+    # etc. map to Python values and breaking convert_datacloud_value.
+    "nanoarrow>=0.6.0,<0.10.0",
 ]
 
 [project.optional-dependencies]

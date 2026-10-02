@@ -9,7 +9,7 @@ import pytest
 from salesforce_datacloud_connector.api.models import QueryStatus, ColumnMetadata, QueryResponse
 from salesforce_datacloud_connector.exceptions import NotSupportedError
 
-from ._arrow_fixtures import build_arrow_ipc_bytes, nanoarrow_field_for
+from ._arrow_fixtures import build_arrow_ipc_bytes, build_arrow_ipc_bytes_multi_batch, nanoarrow_field_for
 
 
 def test_query_status_from_dict_normalizes_running_or_unspecified():
@@ -146,11 +146,34 @@ def test_column_metadata_from_arrow_field_int32_is_integer():
     assert col.type == "integer"
 
 
+def test_column_metadata_from_arrow_field_int16_is_smallint():
+    """Test that int16 maps to smallint, not integer -- confirmed live: a
+    SMALLINT column physically arrives as Arrow INT16."""
+    field = nanoarrow_field_for(pa.field("count", pa.int16(), nullable=True))
+    col = ColumnMetadata.from_arrow_field(field)
+    assert col.type == "smallint"
+
+
+def test_column_metadata_from_arrow_field_uint32_is_oid():
+    """Test that uint32 maps to oid, not bigint -- confirmed live: oid is
+    Hyper's only unsigned type and is physically Arrow UINT32."""
+    field = nanoarrow_field_for(pa.field("row_id", pa.uint32(), nullable=True))
+    col = ColumnMetadata.from_arrow_field(field)
+    assert col.type == "oid"
+
+
+def test_column_metadata_from_arrow_field_binary_is_bytea():
+    """Test that binary maps to bytea."""
+    field = nanoarrow_field_for(pa.field("payload", pa.binary(), nullable=True))
+    col = ColumnMetadata.from_arrow_field(field)
+    assert col.type == "bytea"
+
+
 def test_column_metadata_from_arrow_field_boolean():
-    """Test that bool maps to boolean."""
+    """Test that bool maps to bool."""
     field = nanoarrow_field_for(pa.field("active", pa.bool_(), nullable=True))
     col = ColumnMetadata.from_arrow_field(field)
-    assert col.type == "boolean"
+    assert col.type == "bool"
 
 
 def test_column_metadata_from_arrow_field_date32():
@@ -158,6 +181,20 @@ def test_column_metadata_from_arrow_field_date32():
     field = nanoarrow_field_for(pa.field("birthday", pa.date32(), nullable=True))
     col = ColumnMetadata.from_arrow_field(field)
     assert col.type == "date"
+
+
+def test_column_metadata_from_arrow_field_time32():
+    """Test that time32 maps to time."""
+    field = nanoarrow_field_for(pa.field("start_time", pa.time32("ms"), nullable=True))
+    col = ColumnMetadata.from_arrow_field(field)
+    assert col.type == "time"
+
+
+def test_column_metadata_from_arrow_field_time64():
+    """Test that time64 maps to time, same as time32 (JDBC doesn't branch on bit width either)."""
+    field = nanoarrow_field_for(pa.field("start_time", pa.time64("us"), nullable=True))
+    col = ColumnMetadata.from_arrow_field(field)
+    assert col.type == "time"
 
 
 def test_column_metadata_from_arrow_field_timestamp_tz():
@@ -184,11 +221,20 @@ def test_column_metadata_from_arrow_field_unsupported_type_raises():
 
 
 def test_column_metadata_from_arrow_field_float_and_double():
-    """Test that float32/float64 map to float/double respectively."""
+    """Test that float32/float64 map to float4/float8 respectively (the real
+    v3 spec names for REAL/DOUBLE PRECISION)."""
     float_col = ColumnMetadata.from_arrow_field(nanoarrow_field_for(pa.field("f", pa.float32(), nullable=True)))
     double_col = ColumnMetadata.from_arrow_field(nanoarrow_field_for(pa.field("d", pa.float64(), nullable=True)))
-    assert float_col.type == "float"
-    assert double_col.type == "double"
+    assert float_col.type == "float4"
+    assert double_col.type == "float8"
+
+
+def test_column_metadata_from_arrow_field_interval_month_day_nano():
+    """Test that interval_month_day_nano maps to interval -- confirmed live:
+    INTERVAL columns physically arrive as this Arrow type."""
+    field = nanoarrow_field_for(pa.field("span", pa.month_day_nano_interval(), nullable=True))
+    col = ColumnMetadata.from_arrow_field(field)
+    assert col.type == "interval"
 
 
 def test_query_response_from_arrow_bytes_basic_round_trip():
@@ -257,6 +303,42 @@ def test_query_response_from_arrow_bytes_empty_result_keeps_schema():
     assert len(response.metadata) == 1
     assert response.metadata[0].name == "name"
     assert response.metadata[0].type == "varchar"
+
+
+def test_query_response_from_arrow_bytes_concatenates_multiple_record_batches():
+    """Test that a stream with more than one record batch (e.g. QS paginating
+    one query's results across several write_batch() calls within a single
+    IPC stream) yields every row, not just the first batch's."""
+    fields = [pa.field("name", pa.string(), nullable=True), pa.field("age", pa.int64(), nullable=False)]
+    raw = build_arrow_ipc_bytes_multi_batch(
+        fields,
+        [
+            [("Alice", 30), ("Bob", 25)],
+            [("Carol", 40)],
+            [("Dave", 50), ("Eve", 60)],
+        ],
+    )
+
+    response = QueryResponse.from_arrow_bytes(raw)
+
+    assert response.returned_rows == 5
+    assert response.data == [
+        ["Alice", 30], ["Bob", 25], ["Carol", 40], ["Dave", 50], ["Eve", 60],
+    ]
+
+
+def test_query_response_from_arrow_bytes_zero_batches_keeps_schema():
+    """Test that a stream with a schema but no record batches at all (not
+    even an empty one) still yields metadata and zero rows."""
+    fields = [pa.field("name", pa.string(), nullable=True)]
+    raw = build_arrow_ipc_bytes_multi_batch(fields, [])
+
+    response = QueryResponse.from_arrow_bytes(raw)
+
+    assert response.data == []
+    assert response.returned_rows == 0
+    assert len(response.metadata) == 1
+    assert response.metadata[0].name == "name"
 
 
 def test_query_response_from_arrow_bytes_attaches_supplied_status():
