@@ -22,6 +22,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   returning `-1`. It remains `-1` before any query is executed and is reset to
   `-1` at the start of each `execute()` so a failed execution does not report a
   stale count (DB-API 2.0 / PEP 249).
+- Query results now default to the Arrow IPC wire format instead of JSON.
+  Pass `output_format="json"` to `cursor.execute()`/`cursor.executemany()` to
+  opt back into the previous JSON behavior.
+- `pyarrow` moved out of the `[pandas]` optional dependency extra into the
+  dev dependency group — it is only needed to build Arrow IPC test fixtures,
+  not by `pandas` support at runtime (`nanoarrow` is the runtime Arrow
+  dependency).
+- `nanoarrow` is now upper-bounded (`>=0.6.0,<0.10.0`) instead of unbounded,
+  so a future major `nanoarrow` release can't silently change how Arrow
+  values map to Python types (e.g. timestamps) underneath
+  `convert_datacloud_value` without a deliberate version bump here.
 
 ## 2.0.0b1 — Beta release (TBD)
 
