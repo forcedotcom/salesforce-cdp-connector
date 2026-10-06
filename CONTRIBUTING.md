@@ -33,7 +33,7 @@ cd salesforce_datacloud_connector && uv run pytest
 
 The v2 suite uses `@pytest.mark.e2e` for tests that require a live Salesforce org; CI runs `uv run pytest -m "not e2e"` and skips them by default.
 
-## Running the linter
+## Running the linter and formatter
 
 ```shell
 # v1 (run from repo root)
@@ -41,7 +41,10 @@ uv run ruff check .
 
 # v2
 cd salesforce_datacloud_connector && uv run ruff check .
+cd salesforce_datacloud_connector && uv run ruff format .
 ```
+
+CI enforces both `ruff check` and `ruff format --check` for v2.
 
 ## Filing pull requests
 

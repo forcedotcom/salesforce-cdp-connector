@@ -38,5 +38,8 @@ jobs:
       - name: Lint tests
         run: uv run ruff check tests --statistics
 
+      - name: Format check
+        run: uv run ruff format --check salesforce_datacloud_connector tests
+
       - name: Run tests
         run: uv run pytest -m "not e2e"
