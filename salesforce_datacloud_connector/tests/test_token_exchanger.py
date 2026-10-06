@@ -624,6 +624,7 @@ def test_tenant_endpoint_schemeless_response_gets_https_prefix():
 def test_import_from_auth_module():
     """Test that DataCloudTokenExchanger can be imported from auth module."""
     from salesforce_datacloud_connector.auth import DataCloudTokenExchanger
+
     assert DataCloudTokenExchanger is not None
 
 

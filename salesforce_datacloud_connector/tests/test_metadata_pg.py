@@ -271,5 +271,3 @@ class TestGetTableMetadataPg:
 
         with pytest.raises(ValueError, match="table_name is required"):
             get_table_metadata_pg(cursor, table_name=None, dataspace="default")
-
-

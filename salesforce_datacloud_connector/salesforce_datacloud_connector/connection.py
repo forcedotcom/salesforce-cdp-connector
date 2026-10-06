@@ -146,12 +146,13 @@ class Connection:
         cursor = self.cursor()
         try:
             from ._metadata_pg import list_tables_pg
+
             return list_tables_pg(
                 cursor,
                 schema_pattern=schema_pattern,
                 table_name_pattern=table_name_pattern,
                 table_types=table_types,
-                dataspace=self._dataspace
+                dataspace=self._dataspace,
             )
         finally:
             cursor.close()
@@ -183,19 +184,17 @@ class Connection:
         # Parse schema.table if qualified
         parsed_schema = schema
         parsed_table = table_name
-        if '.' in table_name:
-            parts = table_name.split('.', 1)
+        if "." in table_name:
+            parts = table_name.split(".", 1)
             parsed_schema = parts[0]
             parsed_table = parts[1]
 
         cursor = self.cursor()
         try:
             from ._metadata_pg import get_table_metadata_pg
+
             return get_table_metadata_pg(
-                cursor,
-                schema=parsed_schema,
-                table_name=parsed_table,
-                dataspace=self._dataspace
+                cursor, schema=parsed_schema, table_name=parsed_table, dataspace=self._dataspace
             )
         finally:
             cursor.close()

@@ -162,16 +162,12 @@ def connect(
     # would only surface after a real login round-trip, inside
     # DataCloudQueryClient.__init__ via Connection.__init__.
     if output_format not in ("arrow", "json"):
-        raise ValueError(
-            f"Invalid output_format: {output_format!r}. Must be 'arrow' or 'json'"
-        )
+        raise ValueError(f"Invalid output_format: {output_format!r}. Must be 'arrow' or 'json'")
 
     # Validate and create authenticator based on auth_type
     if auth_type == "username_password":
         if not all([username, password, client_id, client_secret]):
-            raise ValueError(
-                "username_password auth requires: username, password, client_id, client_secret"
-            )
+            raise ValueError("username_password auth requires: username, password, client_id, client_secret")
         authenticator = UsernamePasswordAuthenticator(
             login_url=login_url,
             username=username,
@@ -192,9 +188,7 @@ def connect(
 
     elif auth_type == "refresh_token":
         if not all([client_id, client_secret, refresh_token]):
-            raise ValueError(
-                "refresh_token auth requires: client_id, client_secret, refresh_token"
-            )
+            raise ValueError("refresh_token auth requires: client_id, client_secret, refresh_token")
         authenticator = RefreshTokenAuthenticator(
             login_url=login_url,
             client_id=client_id,
@@ -204,9 +198,7 @@ def connect(
 
     elif auth_type == "client_credentials":
         if not all([client_id, client_secret]):
-            raise ValueError(
-                "client_credentials auth requires: client_id, client_secret"
-            )
+            raise ValueError("client_credentials auth requires: client_id, client_secret")
         authenticator = ClientCredentialsAuthenticator(
             login_url=login_url,
             client_id=client_id,

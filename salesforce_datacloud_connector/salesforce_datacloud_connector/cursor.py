@@ -81,9 +81,7 @@ class Cursor:
         if not self._metadata:
             self._description = None
         else:
-            self._description = [
-                build_description_tuple(col.__dict__) for col in self._metadata
-            ]
+            self._description = [build_description_tuple(col.__dict__) for col in self._metadata]
 
     def _fetch_next_chunk(self):
         """
@@ -140,9 +138,7 @@ class Cursor:
         for i, value in enumerate(row):
             if i < len(self._metadata):
                 col = self._metadata[i]
-                converted_value = convert_datacloud_value(
-                    value, col.type, col.precision, col.scale
-                )
+                converted_value = convert_datacloud_value(value, col.type, col.precision, col.scale)
                 converted.append(converted_value)
             else:
                 converted.append(value)
@@ -184,9 +180,7 @@ class Cursor:
             operation_upper.startswith(cmd)
             for cmd in ("INSERT", "UPDATE", "DELETE", "CREATE", "DROP", "ALTER", "TRUNCATE")
         ):
-            raise NotSupportedError(
-                "V1 driver is read-only. DML/DDL operations are not supported."
-            )
+            raise NotSupportedError("V1 driver is read-only. DML/DDL operations are not supported.")
 
         # Execute query
         response = self._client.execute_query(operation, parameters, settings=settings)
@@ -392,8 +386,7 @@ class Cursor:
             import pandas as pd
         except ImportError as e:
             raise ImportError(
-                "pandas is required for fetch_df(). "
-                "Install with: pip install salesforce-datacloud[pandas]"
+                "pandas is required for fetch_df(). Install with: pip install salesforce-datacloud[pandas]"
             ) from e
 
         # Fetch all rows

@@ -348,9 +348,7 @@ def test_sf_cli_auth_success(mock_run):
     first_call_args = mock_run.call_args_list[0].args[0]
     second_call_args = mock_run.call_args_list[1].args[0]
     assert first_call_args == ["sf", "org", "display", "--json", "--target-org", "my-alias"]
-    assert second_call_args == [
-        "sf", "org", "auth", "show-access-token", "--json", "--target-org", "my-alias"
-    ]
+    assert second_call_args == ["sf", "org", "auth", "show-access-token", "--json", "--target-org", "my-alias"]
 
 
 @patch("subprocess.run")
@@ -387,9 +385,7 @@ def test_sf_cli_auth_org_display_failure(mock_run):
     """A non-zero status from `org display` (e.g. no authenticated org)
     surfaces the CLI's own message and skips the token-fetch call."""
     mock_run.side_effect = [
-        _completed_process(
-            '{"status": 1, "message": "No authorization information found for my-alias."}'
-        ),
+        _completed_process('{"status": 1, "message": "No authorization information found for my-alias."}'),
     ]
 
     auth = SfCliAuthenticator(target_org="my-alias")

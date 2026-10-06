@@ -83,9 +83,7 @@ def list_tables_pg(
         List of DataCloudTable objects with populated fields.
     """
     # Build and execute tables query
-    tables_sql, tables_params = _build_tables_query(
-        schema_pattern, table_name_pattern, table_types
-    )
+    tables_sql, tables_params = _build_tables_query(schema_pattern, table_name_pattern, table_types)
     cursor.execute(tables_sql, tables_params)
     table_rows = cursor.fetchall()
 
@@ -93,9 +91,7 @@ def list_tables_pg(
         return []
 
     # Build and execute columns query for all tables
-    columns_sql, columns_params = _build_columns_query(
-        schema_pattern, table_name_pattern
-    )
+    columns_sql, columns_params = _build_columns_query(schema_pattern, table_name_pattern)
     cursor.execute(columns_sql, columns_params)
     column_rows = cursor.fetchall()
 
@@ -175,10 +171,10 @@ def get_table_metadata_pg(
         # Multiple matches - if no schema specified, this is ambiguous
         if schema is None:
             from .exceptions import InterfaceError
+
             table_list = ", ".join([f"{t.category}.{t.name}" for t in tables])
             raise InterfaceError(
-                f"Multiple tables named '{table_name}' found: {table_list}. "
-                f"Please specify a schema parameter."
+                f"Multiple tables named '{table_name}' found: {table_list}. Please specify a schema parameter."
             )
 
     return tables[0]

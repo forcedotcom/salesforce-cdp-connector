@@ -31,10 +31,7 @@ def test_execute_query_sync_v3():
         "rowCount": 2,
         "progress": 1.0,
         "expirationTime": "2025-09-26T10:55:07.438Z",
-        "executionStats": {
-            "wallClockTime": 1.122854338,
-            "rowsProcessed": 2
-        }
+        "executionStats": {"wallClockTime": 1.122854338, "rowsProcessed": 2},
     }
 
     responses.add(
@@ -48,11 +45,9 @@ def test_execute_query_sync_v3():
                 ]
             },
             "data": [["Alice", 30], ["Bob", 25]],
-            "returnedRows": 2
+            "returnedRows": 2,
         },
-        headers={
-            "x-hyperdb-status": json.dumps(status_header)
-        },
+        headers={"x-hyperdb-status": json.dumps(status_header)},
         status=200,
     )
 
@@ -92,11 +87,9 @@ def test_execute_query_async_v3():
                 ]
             },
             "data": None,
-            "returnedRows": 0
+            "returnedRows": 0,
         },
-        headers={
-            "x-hyperdb-status": json.dumps(status_header)
-        },
+        headers={"x-hyperdb-status": json.dumps(status_header)},
         status=200,
     )
 
@@ -118,8 +111,10 @@ def test_execute_query_async_v3():
 @responses.activate
 def test_execute_query_with_parameters_v3():
     """Test executing a parameterized query (v3 API)."""
+
     def check_request(request):
         import json
+
         body = json.loads(request.body.decode("utf-8"))
         assert "parameters" in body
         assert len(body["parameters"]) == 1
@@ -133,17 +128,13 @@ def test_execute_query_with_parameters_v3():
             "completionStatus": "RESULTS_PRODUCED",
             "progress": 1.0,
             "rowCount": 0,
-            "chunkCount": 0
+            "chunkCount": 0,
         }
 
         return (
             200,
             {"x-hyperdb-status": json.dumps(status_header)},
-            json.dumps({
-                "metadata": {"columns": []},
-                "data": [],
-                "returnedRows": 0
-            })
+            json.dumps({"metadata": {"columns": []}, "data": [], "returnedRows": 0}),
         )
 
     responses.add_callback(
@@ -158,10 +149,7 @@ def test_execute_query_with_parameters_v3():
         output_format="json",
     )
 
-    response = client.execute_query(
-        "SELECT * FROM users WHERE status = ?",
-        parameters={"status": "Active"}
-    )
+    response = client.execute_query("SELECT * FROM users WHERE status = ?", parameters={"status": "Active"})
 
     assert response.status.query_id == "q1"
 
@@ -169,16 +157,23 @@ def test_execute_query_with_parameters_v3():
 @responses.activate
 def test_execute_query_includes_settings_in_request_body():
     """Per-call `settings` are forwarded as-is in the v3 request body's "settings" field."""
+
     def check_request(request):
         body = json.loads(request.body.decode("utf-8"))
         assert body["settings"] == {"time_zone": "UTC"}
 
         status_header = {
-            "queryId": "q1", "completionStatus": "RESULTS_PRODUCED",
-            "progress": 1.0, "rowCount": 0, "chunkCount": 0,
+            "queryId": "q1",
+            "completionStatus": "RESULTS_PRODUCED",
+            "progress": 1.0,
+            "rowCount": 0,
+            "chunkCount": 0,
         }
-        return (200, {"x-hyperdb-status": json.dumps(status_header)},
-                json.dumps({"metadata": {"columns": []}, "data": [], "returnedRows": 0}))
+        return (
+            200,
+            {"x-hyperdb-status": json.dumps(status_header)},
+            json.dumps({"metadata": {"columns": []}, "data": [], "returnedRows": 0}),
+        )
 
     responses.add_callback(
         responses.POST,
@@ -198,16 +193,23 @@ def test_execute_query_includes_settings_in_request_body():
 def test_execute_query_merges_default_and_per_call_settings():
     """Connection-level default settings (from the constructor) merge with
     per-call settings; on key collision, the per-call value wins."""
+
     def check_request(request):
         body = json.loads(request.body.decode("utf-8"))
         assert body["settings"] == {"time_zone": "America/New_York", "lc_time": "en_US"}
 
         status_header = {
-            "queryId": "q1", "completionStatus": "RESULTS_PRODUCED",
-            "progress": 1.0, "rowCount": 0, "chunkCount": 0,
+            "queryId": "q1",
+            "completionStatus": "RESULTS_PRODUCED",
+            "progress": 1.0,
+            "rowCount": 0,
+            "chunkCount": 0,
         }
-        return (200, {"x-hyperdb-status": json.dumps(status_header)},
-                json.dumps({"metadata": {"columns": []}, "data": [], "returnedRows": 0}))
+        return (
+            200,
+            {"x-hyperdb-status": json.dumps(status_header)},
+            json.dumps({"metadata": {"columns": []}, "data": [], "returnedRows": 0}),
+        )
 
     responses.add_callback(
         responses.POST,
@@ -243,17 +245,24 @@ def test_named_parameters_translated_to_qmark_v3():
     (qmark) parameters. A :name placeholder in the SQL must be rewritten to ?
     and its value emitted positionally, or the server rejects the query with
     "conflicting parameter style 'named' ... set to 'qmark'"."""
+
     def check_request(request):
         body = json.loads(request.body.decode("utf-8"))
         assert body["sql"] == "SELECT ? AS msg"
         assert body["parameters"] == [{"type": "varchar", "value": "hi there"}]
 
         status_header = {
-            "queryId": "q1", "completionStatus": "RESULTS_PRODUCED",
-            "progress": 1.0, "rowCount": 0, "chunkCount": 0,
+            "queryId": "q1",
+            "completionStatus": "RESULTS_PRODUCED",
+            "progress": 1.0,
+            "rowCount": 0,
+            "chunkCount": 0,
         }
-        return (200, {"x-hyperdb-status": json.dumps(status_header)},
-                json.dumps({"metadata": {"columns": []}, "data": [], "returnedRows": 0}))
+        return (
+            200,
+            {"x-hyperdb-status": json.dumps(status_header)},
+            json.dumps({"metadata": {"columns": []}, "data": [], "returnedRows": 0}),
+        )
 
     responses.add_callback(
         responses.POST,
@@ -273,6 +282,7 @@ def test_named_parameters_translated_to_qmark_v3():
 def test_named_parameter_reuse_translated_positionally_v3():
     """A named parameter used more than once expands to one positional ? per
     occurrence, with the value repeated in the parameters array."""
+
     def check_request(request):
         body = json.loads(request.body.decode("utf-8"))
         assert body["sql"] == "SELECT ? AS a, ? + 1 AS b"
@@ -282,11 +292,17 @@ def test_named_parameter_reuse_translated_positionally_v3():
         ]
 
         status_header = {
-            "queryId": "q1", "completionStatus": "RESULTS_PRODUCED",
-            "progress": 1.0, "rowCount": 0, "chunkCount": 0,
+            "queryId": "q1",
+            "completionStatus": "RESULTS_PRODUCED",
+            "progress": 1.0,
+            "rowCount": 0,
+            "chunkCount": 0,
         }
-        return (200, {"x-hyperdb-status": json.dumps(status_header)},
-                json.dumps({"metadata": {"columns": []}, "data": [], "returnedRows": 0}))
+        return (
+            200,
+            {"x-hyperdb-status": json.dumps(status_header)},
+            json.dumps({"metadata": {"columns": []}, "data": [], "returnedRows": 0}),
+        )
 
     responses.add_callback(
         responses.POST,
@@ -307,6 +323,7 @@ def test_qmark_sql_passes_through_unchanged_v3():
     """SQL that already uses positional ? placeholders (e.g. internal catalog
     queries) has no :name tokens: the SQL is left untouched and the parameter
     array is built from the dict's insertion order."""
+
     def check_request(request):
         body = json.loads(request.body.decode("utf-8"))
         assert body["sql"] == "SELECT * FROM t WHERE a = ? AND b = ?"
@@ -316,11 +333,17 @@ def test_qmark_sql_passes_through_unchanged_v3():
         ]
 
         status_header = {
-            "queryId": "q1", "completionStatus": "RESULTS_PRODUCED",
-            "progress": 1.0, "rowCount": 0, "chunkCount": 0,
+            "queryId": "q1",
+            "completionStatus": "RESULTS_PRODUCED",
+            "progress": 1.0,
+            "rowCount": 0,
+            "chunkCount": 0,
         }
-        return (200, {"x-hyperdb-status": json.dumps(status_header)},
-                json.dumps({"metadata": {"columns": []}, "data": [], "returnedRows": 0}))
+        return (
+            200,
+            {"x-hyperdb-status": json.dumps(status_header)},
+            json.dumps({"metadata": {"columns": []}, "data": [], "returnedRows": 0}),
+        )
 
     responses.add_callback(
         responses.POST,
@@ -344,6 +367,7 @@ def test_qmark_sql_passes_through_unchanged_v3():
 def test_named_translation_leaves_type_casts_alone_v3():
     """Postgres :: type casts must not be mistaken for :name placeholders when
     translating. Only the genuine :name (present in params) is rewritten."""
+
     def check_request(request):
         body = json.loads(request.body.decode("utf-8"))
         # ::regclass cast preserved; :kind rewritten to ?
@@ -351,11 +375,17 @@ def test_named_translation_leaves_type_casts_alone_v3():
         assert body["parameters"] == [{"type": "varchar", "value": "r"}]
 
         status_header = {
-            "queryId": "q1", "completionStatus": "RESULTS_PRODUCED",
-            "progress": 1.0, "rowCount": 0, "chunkCount": 0,
+            "queryId": "q1",
+            "completionStatus": "RESULTS_PRODUCED",
+            "progress": 1.0,
+            "rowCount": 0,
+            "chunkCount": 0,
         }
-        return (200, {"x-hyperdb-status": json.dumps(status_header)},
-                json.dumps({"metadata": {"columns": []}, "data": [], "returnedRows": 0}))
+        return (
+            200,
+            {"x-hyperdb-status": json.dumps(status_header)},
+            json.dumps({"metadata": {"columns": []}, "data": [], "returnedRows": 0}),
+        )
 
     responses.add_callback(
         responses.POST,
@@ -408,6 +438,7 @@ def test_get_query_status_v3():
 @responses.activate
 def test_fetch_results_v3():
     """Test fetching query results (v3 API)."""
+
     def check_request(request):
         # Verify v3 query parameters
         assert "offset=0" in request.url
@@ -419,16 +450,22 @@ def test_fetch_results_v3():
         # v3 should not have workload param in query string
         assert "workload=" not in request.url
 
-        return (200, {}, json.dumps({
-            "metadata": {
-                "columns": [
-                    {"name": "id", "type": "numeric", "nullable": False},
-                    {"name": "value", "type": "varchar", "nullable": True}
-                ]
-            },
-            "data": [[1, "first"], [2, "second"]],
-            "returnedRows": 2
-        }))
+        return (
+            200,
+            {},
+            json.dumps(
+                {
+                    "metadata": {
+                        "columns": [
+                            {"name": "id", "type": "numeric", "nullable": False},
+                            {"name": "value", "type": "varchar", "nullable": True},
+                        ]
+                    },
+                    "data": [[1, "first"], [2, "second"]],
+                    "returnedRows": 2,
+                }
+            ),
+        )
 
     responses.add_callback(
         responses.GET,
@@ -442,12 +479,7 @@ def test_fetch_results_v3():
         output_format="json",
     )
 
-    response = client.fetch_results(
-        query_id="query123",
-        offset=0,
-        row_limit=1000000,
-        omit_schema=False
-    )
+    response = client.fetch_results(query_id="query123", offset=0, row_limit=1000000, omit_schema=False)
 
     assert len(response.data) == 2
     assert response.data[0] == [1, "first"]
@@ -487,7 +519,7 @@ def test_error_response_v3():
             "path": "/api/v3/query",
             "tenantId": "tenant123",
             "internalErrorCode": "COMMON_ERROR_GENERIC",
-            "details": {}
+            "details": {},
         },
         status=400,
     )
@@ -553,6 +585,7 @@ def test_poll_until_complete_v3():
 @responses.activate
 def test_get_query_status_with_long_polling():
     """Test query status with long-polling."""
+
     def check_request(request):
         assert "waitTimeMs" in request.url
         # getQueryStatusV3 returns QueryStatus as the JSON body directly; it
@@ -562,7 +595,7 @@ def test_get_query_status_with_long_polling():
             "completionStatus": "RUNNING_OR_UNSPECIFIED",
             "progress": 0.8,
             "rowCount": 0,
-            "chunkCount": 0
+            "chunkCount": 0,
         }
         return (200, {}, json.dumps(status_body))
 
@@ -585,6 +618,7 @@ def test_get_query_status_with_long_polling():
 @responses.activate
 def test_fetch_results_with_offset():
     """Test fetching results with pagination offset."""
+
     def check_request(request):
         assert "offset=100" in request.url
         assert "limit=50" in request.url
@@ -640,9 +674,7 @@ def test_retry_on_500():
             "data": [],
             "returnedRows": 0,
         },
-        headers={
-            "x-hyperdb-status": json.dumps(status_header)
-        },
+        headers={"x-hyperdb-status": json.dumps(status_header)},
         status=200,
     )
 
@@ -684,6 +716,7 @@ def test_no_retry_on_400():
 @responses.activate
 def test_workload_parameter():
     """Test that workload parameter is included in requests."""
+
     def check_request(request):
         assert request.headers.get("x-hyperdb-workload") == "python-connector-v2_my_app"
         assert "workload=" not in request.url
@@ -692,9 +725,13 @@ def test_workload_parameter():
             "completionStatus": "RESULTS_PRODUCED",
             "progress": 1.0,
             "rowCount": 0,
-            "chunkCount": 0
+            "chunkCount": 0,
         }
-        return (200, {"x-hyperdb-status": json.dumps(status_header)}, '{"metadata":{"columns":[]},"data":[],"returnedRows":0}')
+        return (
+            200,
+            {"x-hyperdb-status": json.dumps(status_header)},
+            '{"metadata":{"columns":[]},"data":[],"returnedRows":0}',
+        )
 
     responses.add_callback(
         responses.POST,
@@ -715,6 +752,7 @@ def test_workload_parameter():
 @responses.activate
 def test_dataspace_header():
     """Test that dataspace is included as a request header."""
+
     def check_request(request):
         assert request.headers.get("ctx-dataspace-ds_name") == "custom_space"
         assert "dataspace" not in request.url
@@ -723,9 +761,13 @@ def test_dataspace_header():
             "completionStatus": "RESULTS_PRODUCED",
             "progress": 1.0,
             "rowCount": 0,
-            "chunkCount": 0
+            "chunkCount": 0,
         }
-        return (200, {"x-hyperdb-status": json.dumps(status_header)}, '{"metadata":{"columns":[]},"data":[],"returnedRows":0}')
+        return (
+            200,
+            {"x-hyperdb-status": json.dumps(status_header)},
+            '{"metadata":{"columns":[]},"data":[],"returnedRows":0}',
+        )
 
     responses.add_callback(
         responses.POST,
@@ -754,11 +796,17 @@ def test_default_user_agent_header():
     def check_request(request):
         assert request.headers.get("User-Agent") == f"salesforce-cdp-connector/{__version__}"
         status_header = {
-            "queryId": "q1", "completionStatus": "RESULTS_PRODUCED",
-            "progress": 1.0, "rowCount": 0, "chunkCount": 0,
+            "queryId": "q1",
+            "completionStatus": "RESULTS_PRODUCED",
+            "progress": 1.0,
+            "rowCount": 0,
+            "chunkCount": 0,
         }
-        return (200, {"x-hyperdb-status": json.dumps(status_header)},
-                '{"metadata":{"columns":[]},"data":[],"returnedRows":0}')
+        return (
+            200,
+            {"x-hyperdb-status": json.dumps(status_header)},
+            '{"metadata":{"columns":[]},"data":[],"returnedRows":0}',
+        )
 
     responses.add_callback(
         responses.POST,
@@ -781,15 +829,19 @@ def test_user_agent_append():
     from salesforce_datacloud_connector import __version__
 
     def check_request(request):
-        assert request.headers.get("User-Agent") == (
-            f"salesforce-cdp-connector/{__version__} my-app/1.0"
-        )
+        assert request.headers.get("User-Agent") == (f"salesforce-cdp-connector/{__version__} my-app/1.0")
         status_header = {
-            "queryId": "q1", "completionStatus": "RESULTS_PRODUCED",
-            "progress": 1.0, "rowCount": 0, "chunkCount": 0,
+            "queryId": "q1",
+            "completionStatus": "RESULTS_PRODUCED",
+            "progress": 1.0,
+            "rowCount": 0,
+            "chunkCount": 0,
         }
-        return (200, {"x-hyperdb-status": json.dumps(status_header)},
-                '{"metadata":{"columns":[]},"data":[],"returnedRows":0}')
+        return (
+            200,
+            {"x-hyperdb-status": json.dumps(status_header)},
+            '{"metadata":{"columns":[]},"data":[],"returnedRows":0}',
+        )
 
     responses.add_callback(
         responses.POST,
@@ -815,11 +867,17 @@ def test_blank_user_agent_falls_back_to_default():
     def check_request(request):
         assert request.headers.get("User-Agent") == f"salesforce-cdp-connector/{__version__}"
         status_header = {
-            "queryId": "q1", "completionStatus": "RESULTS_PRODUCED",
-            "progress": 1.0, "rowCount": 0, "chunkCount": 0,
+            "queryId": "q1",
+            "completionStatus": "RESULTS_PRODUCED",
+            "progress": 1.0,
+            "rowCount": 0,
+            "chunkCount": 0,
         }
-        return (200, {"x-hyperdb-status": json.dumps(status_header)},
-                '{"metadata":{"columns":[]},"data":[],"returnedRows":0}')
+        return (
+            200,
+            {"x-hyperdb-status": json.dumps(status_header)},
+            '{"metadata":{"columns":[]},"data":[],"returnedRows":0}',
+        )
 
     responses.add_callback(
         responses.POST,
@@ -839,6 +897,7 @@ def test_blank_user_agent_falls_back_to_default():
 @responses.activate
 def test_auth_token_included():
     """Test that auth token is included in request headers."""
+
     def check_request(request):
         assert "Authorization" in request.headers
         assert request.headers["Authorization"] == "Bearer mock_token_12345"
@@ -847,9 +906,13 @@ def test_auth_token_included():
             "completionStatus": "RESULTS_PRODUCED",
             "progress": 1.0,
             "rowCount": 0,
-            "chunkCount": 0
+            "chunkCount": 0,
         }
-        return (200, {"x-hyperdb-status": json.dumps(status_header)}, '{"metadata":{"columns":[]},"data":[],"returnedRows":0}')
+        return (
+            200,
+            {"x-hyperdb-status": json.dumps(status_header)},
+            '{"metadata":{"columns":[]},"data":[],"returnedRows":0}',
+        )
 
     responses.add_callback(
         responses.POST,
@@ -924,7 +987,6 @@ def test_query_status_from_empty_dict_does_not_throw():
     assert status.expiration_time is None
 
 
-
 # --- Arrow output format (v3 Accept: application/vnd.apache.arrow.stream) ---
 
 
@@ -961,8 +1023,11 @@ def test_execute_query_arrow_default_sends_arrow_accept_and_parses_body():
     def check_request(request):
         assert request.headers.get("Accept") == "application/vnd.apache.arrow.stream"
         status_header = {
-            "queryId": "q1", "completionStatus": "RESULTS_PRODUCED",
-            "progress": 1.0, "rowCount": 2, "chunkCount": 1,
+            "queryId": "q1",
+            "completionStatus": "RESULTS_PRODUCED",
+            "progress": 1.0,
+            "rowCount": 2,
+            "chunkCount": 1,
         }
         return (200, {"x-hyperdb-status": json.dumps(status_header)}, arrow_body)
 
@@ -991,10 +1056,14 @@ def test_execute_query_arrow_empty_body_means_still_running_not_a_parse_error():
     x-hyperdb-status set but a zero-length Arrow body (QS writes `new byte[0]`
     when there's no Hyper binary part yet) -- this must surface as a zero-row,
     still-running response, not an Arrow parse failure."""
+
     def check_request(request):
         status_header = {
-            "queryId": "q1", "completionStatus": "RUNNING",
-            "progress": 0.0, "rowCount": 0, "chunkCount": 0,
+            "queryId": "q1",
+            "completionStatus": "RUNNING",
+            "progress": 0.0,
+            "rowCount": 0,
+            "chunkCount": 0,
         }
         return (200, {"x-hyperdb-status": json.dumps(status_header)}, b"")
 
@@ -1049,14 +1118,18 @@ def test_fetch_results_arrow_default_sends_arrow_accept_and_parses_body():
 def test_get_query_status_sends_json_accept_even_when_client_is_arrow():
     """The status endpoint has no Arrow variant per the v3 spec: even a
     client configured for Arrow output must request JSON for status."""
+
     def check_request(request):
         assert request.headers.get("Accept") == "application/json"
         # getQueryStatusV3 returns QueryStatus as the JSON body directly and
         # never sets x-hyperdb-status (that header is only set by the POST
         # /v3/query path) -- no header here is intentional, not an oversight.
         status_body = {
-            "queryId": "q1", "completionStatus": "FINISHED",
-            "progress": 1.0, "rowCount": 5, "chunkCount": 1,
+            "queryId": "q1",
+            "completionStatus": "FINISHED",
+            "progress": 1.0,
+            "rowCount": 5,
+            "chunkCount": 1,
         }
         return (200, {}, json.dumps(status_body))
 
@@ -1082,6 +1155,7 @@ def test_cancel_query_sends_json_accept_even_when_client_is_arrow():
     """cancel_query has no response body to parse either way, but must still
     default to the JSON Accept header rather than inheriting the client's
     Arrow data format."""
+
     def check_request(request):
         assert request.headers.get("Accept") == "application/json"
         return (204, {}, "")
@@ -1104,17 +1178,26 @@ def test_execute_query_json_output_format_still_supported():
     """output_format="json" remains available as an explicit opt-in: Accept
     negotiates JSON and the body is parsed as JSON, not Arrow."""
     status_header = {
-        "queryId": "q1", "completionStatus": "RESULTS_PRODUCED",
-        "progress": 1.0, "rowCount": 1, "chunkCount": 1,
+        "queryId": "q1",
+        "completionStatus": "RESULTS_PRODUCED",
+        "progress": 1.0,
+        "rowCount": 1,
+        "chunkCount": 1,
     }
 
     def check_request(request):
         assert request.headers.get("Accept") == "application/json"
-        return (200, {"x-hyperdb-status": json.dumps(status_header)}, json.dumps({
-            "metadata": {"columns": [{"name": "name", "type": "varchar", "nullable": True}]},
-            "data": [["Alice"]],
-            "returnedRows": 1,
-        }))
+        return (
+            200,
+            {"x-hyperdb-status": json.dumps(status_header)},
+            json.dumps(
+                {
+                    "metadata": {"columns": [{"name": "name", "type": "varchar", "nullable": True}]},
+                    "data": [["Alice"]],
+                    "returnedRows": 1,
+                }
+            ),
+        )
 
     responses.add_callback(
         responses.POST,

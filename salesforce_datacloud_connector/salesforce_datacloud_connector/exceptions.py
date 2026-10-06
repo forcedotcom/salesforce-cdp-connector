@@ -15,6 +15,7 @@ class Warning(Exception):
 
     Note: In V1 of the driver (read-only), this is rarely used.
     """
+
     pass
 
 
@@ -43,6 +44,7 @@ class InterfaceError(Error):
     Exception raised for errors related to the database interface rather than
     the database itself. Examples: connection issues, invalid parameter types.
     """
+
     pass
 
 
@@ -52,6 +54,7 @@ class DatabaseError(Error):
 
     All database-specific errors should inherit from this class.
     """
+
     pass
 
 
@@ -61,6 +64,7 @@ class DataError(DatabaseError):
 
     Examples: division by zero, numeric value out of range, invalid date format.
     """
+
     pass
 
 
@@ -74,6 +78,7 @@ class OperationalError(DatabaseError):
     This is commonly used for HTTP 401/403 (authentication/authorization errors)
     and network-related issues.
     """
+
     pass
 
 
@@ -85,6 +90,7 @@ class IntegrityError(DatabaseError):
 
     Note: In V1 of the driver (read-only), this is rarely used.
     """
+
     pass
 
 
@@ -96,6 +102,7 @@ class InternalError(DatabaseError):
 
     This is commonly used for HTTP 500 (internal server errors).
     """
+
     pass
 
 
@@ -108,6 +115,7 @@ class ProgrammingError(DatabaseError):
 
     This is commonly used for HTTP 400 (bad request) errors related to SQL.
     """
+
     pass
 
 
@@ -119,12 +127,11 @@ class NotSupportedError(DatabaseError):
     transactions, attempting to close a closed cursor, trying to execute
     DML/DDL operations on a read-only driver.
     """
+
     pass
 
 
-def map_http_error_to_exception(
-    status_code: int, message: str, default_message: str = "Database error"
-) -> Error:
+def map_http_error_to_exception(status_code: int, message: str, default_message: str = "Database error") -> Error:
     """
     Map HTTP status codes to appropriate DB-API 2.0 exception types.
 

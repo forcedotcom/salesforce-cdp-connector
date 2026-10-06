@@ -58,9 +58,7 @@ def test_end_to_end_sync_query():
             "data": [["Alice", 30], ["Bob", 25], ["Charlie", 35]],
             "returnedRows": 3,
         },
-        headers={
-            "x-hyperdb-status": json.dumps(status_header)
-        },
+        headers={"x-hyperdb-status": json.dumps(status_header)},
         status=200,
     )
 
@@ -136,7 +134,16 @@ def test_end_to_end_arrow_default_comprehensive_type_palette():
         pa.field("span", pa.month_day_nano_interval(), nullable=True),
     ]
     row = (
-        True, 7, 42, 9000000000, 100000, 1.5, 2.25, Decimal("12345.678"), "Alice", b"hello",
+        True,
+        7,
+        42,
+        9000000000,
+        100000,
+        1.5,
+        2.25,
+        Decimal("12345.678"),
+        "Alice",
+        b"hello",
         datetime.date(2024, 1, 15),
         datetime.time(14, 30, 0),
         datetime.datetime(2024, 1, 15, 10, 30, 0),
@@ -148,8 +155,11 @@ def test_end_to_end_arrow_default_comprehensive_type_palette():
     def check_request(request):
         assert request.headers.get("Accept") == "application/vnd.apache.arrow.stream"
         status_header = {
-            "queryId": "q1", "completionStatus": "RESULTS_PRODUCED",
-            "progress": 1.0, "rowCount": 1, "chunkCount": 1,
+            "queryId": "q1",
+            "completionStatus": "RESULTS_PRODUCED",
+            "progress": 1.0,
+            "rowCount": 1,
+            "chunkCount": 1,
         }
         return (200, {"x-hyperdb-status": json.dumps(status_header)}, arrow_body)
 
@@ -171,8 +181,21 @@ def test_end_to_end_arrow_default_comprehensive_type_palette():
             cursor.execute("SELECT * FROM everything")
 
             expected_types = [
-                "bool", "smallint", "integer", "bigint", "oid", "float4", "float8", "numeric",
-                "varchar", "bytea", "date", "time", "timestamp", "timestamptz", "interval",
+                "bool",
+                "smallint",
+                "integer",
+                "bigint",
+                "oid",
+                "float4",
+                "float8",
+                "numeric",
+                "varchar",
+                "bytea",
+                "date",
+                "time",
+                "timestamp",
+                "timestamptz",
+                "interval",
             ]
             assert [col[0] for col in cursor.description] == [f.name for f in fields]
             assert [col.type for col in cursor._metadata] == expected_types
@@ -180,9 +203,16 @@ def test_end_to_end_arrow_default_comprehensive_type_palette():
             rows = cursor.fetchall()
             assert len(rows) == 1
             assert rows[0] == (
-                True, 7, 42, 9000000000, 100000,
-                pytest.approx(1.5), pytest.approx(2.25), Decimal("12345.678"),
-                "Alice", b"hello",
+                True,
+                7,
+                42,
+                9000000000,
+                100000,
+                pytest.approx(1.5),
+                pytest.approx(2.25),
+                Decimal("12345.678"),
+                "Alice",
+                b"hello",
                 datetime.date(2024, 1, 15),
                 datetime.time(14, 30, 0),
                 datetime.datetime(2024, 1, 15, 10, 30, 0),
@@ -222,15 +252,11 @@ def test_end_to_end_with_context_managers():
         responses.POST,
         "https://myorg.my.salesforce.com/api/v3/query",
         json={
-            "metadata": {
-                "columns": [{"name": "col", "type": "varchar", "nullable": True}]
-            },
+            "metadata": {"columns": [{"name": "col", "type": "varchar", "nullable": True}]},
             "data": [["Result"]],
             "returnedRows": 1,
         },
-        headers={
-            "x-hyperdb-status": json.dumps(status_header)
-        },
+        headers={"x-hyperdb-status": json.dumps(status_header)},
         status=200,
     )
 
@@ -278,7 +304,7 @@ def test_parameterized_query():
             "completionStatus": "RESULTS_PRODUCED",
             "progress": 1.0,
             "rowCount": 1,
-            "chunkCount": 1
+            "chunkCount": 1,
         }
         return (
             200,
@@ -306,9 +332,7 @@ def test_parameterized_query():
         output_format="json",
     ) as conn:
         cursor = conn.cursor()
-        cursor.execute(
-            "SELECT name FROM users WHERE status = :status", {"status": "Active"}
-        )
+        cursor.execute("SELECT name FROM users WHERE status = :status", {"status": "Active"})
         rows = cursor.fetchall()
         assert len(rows) == 1
 
@@ -344,15 +368,11 @@ def test_large_result_set_with_pagination():
         responses.POST,
         "https://myorg.my.salesforce.com/api/v3/query",
         json={
-            "metadata": {
-                "columns": [{"name": "data", "type": "varchar", "nullable": True}]
-            },
+            "metadata": {"columns": [{"name": "data", "type": "varchar", "nullable": True}]},
             "data": [["Row1"], ["Row2"]],
             "returnedRows": 2,
         },
-        headers={
-            "x-hyperdb-status": json.dumps(status_header)
-        },
+        headers={"x-hyperdb-status": json.dumps(status_header)},
         status=200,
     )
 
@@ -422,15 +442,11 @@ def test_async_query_with_polling():
         responses.POST,
         "https://myorg.my.salesforce.com/api/v3/query",
         json={
-            "metadata": {
-                "columns": [{"name": "result", "type": "varchar", "nullable": True}]
-            },
+            "metadata": {"columns": [{"name": "result", "type": "varchar", "nullable": True}]},
             "data": [],
             "returnedRows": 0,
         },
-        headers={
-            "x-hyperdb-status": json.dumps(initial_status_header)
-        },
+        headers={"x-hyperdb-status": json.dumps(initial_status_header)},
         status=200,
     )
 
@@ -587,15 +603,11 @@ def test_cursor_iteration():
         responses.POST,
         "https://myorg.my.salesforce.com/api/v3/query",
         json={
-            "metadata": {
-                "columns": [{"name": "name", "type": "varchar", "nullable": True}]
-            },
+            "metadata": {"columns": [{"name": "name", "type": "varchar", "nullable": True}]},
             "data": [["Alice"], ["Bob"], ["Charlie"]],
             "returnedRows": 3,
         },
-        headers={
-            "x-hyperdb-status": json.dumps(status_header)
-        },
+        headers={"x-hyperdb-status": json.dumps(status_header)},
         status=200,
     )
 
@@ -638,15 +650,11 @@ def test_jwt_authentication():
         responses.POST,
         "https://myorg.my.salesforce.com/api/v3/query",
         json={
-            "metadata": {
-                "columns": [{"name": "col", "type": "varchar", "nullable": True}]
-            },
+            "metadata": {"columns": [{"name": "col", "type": "varchar", "nullable": True}]},
             "data": [["Test"]],
             "returnedRows": 1,
         },
-        headers={
-            "x-hyperdb-status": json.dumps(status_header)
-        },
+        headers={"x-hyperdb-status": json.dumps(status_header)},
         status=200,
     )
 
@@ -668,15 +676,11 @@ def test_jwt_authentication():
             responses.POST,
             "https://myorg.my.salesforce.com/api/v3/query",
             json={
-                "metadata": {
-                    "columns": [{"name": "col", "type": "varchar", "nullable": True}]
-                },
+                "metadata": {"columns": [{"name": "col", "type": "varchar", "nullable": True}]},
                 "data": [["Test"]],
                 "returnedRows": 1,
             },
-            headers={
-                "x-hyperdb-status": json.dumps(status_header)
-            },
+            headers={"x-hyperdb-status": json.dumps(status_header)},
             status=200,
         )
 
@@ -735,15 +739,11 @@ def test_refresh_token_authentication():
         responses.POST,
         "https://myorg.my.salesforce.com/api/v3/query",
         json={
-            "metadata": {
-                "columns": [{"name": "col", "type": "varchar", "nullable": True}]
-            },
+            "metadata": {"columns": [{"name": "col", "type": "varchar", "nullable": True}]},
             "data": [["Test"]],
             "returnedRows": 1,
         },
-        headers={
-            "x-hyperdb-status": json.dumps(status_header)
-        },
+        headers={"x-hyperdb-status": json.dumps(status_header)},
         status=200,
     )
 

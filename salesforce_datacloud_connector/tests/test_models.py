@@ -21,10 +21,7 @@ def test_query_status_from_dict_normalizes_running_or_unspecified():
         "rowCount": 0,
         "chunkCount": 0,
         "expirationTime": "2025-09-26T10:55:07.438Z",
-        "executionStats": {
-            "wallClockTime": 1.122854338,
-            "rowsProcessed": 5
-        }
+        "executionStats": {"wallClockTime": 1.122854338, "rowsProcessed": 5},
     }
 
     status = QueryStatus.from_dict(data)
@@ -68,11 +65,7 @@ def test_query_status_recognizes_finished():
 
 def test_column_metadata_from_dict_lowercase_types():
     """Test that lowercase type names are preserved."""
-    data = {
-        "name": "id__c",
-        "type": "varchar",
-        "nullable": False
-    }
+    data = {"name": "id__c", "type": "varchar", "nullable": False}
 
     col = ColumnMetadata.from_dict(data)
 
@@ -87,13 +80,11 @@ def test_query_response_from_dict_v3_shape():
         "metadata": {
             "columns": [
                 {"name": "id__c", "type": "varchar", "nullable": False},
-                {"name": "name__c", "type": "varchar", "nullable": True}
+                {"name": "name__c", "type": "varchar", "nullable": True},
             ]
         },
-        "data": [
-            ["c1ce2a48-9d03-4eed-938d-f354db79c425", "Gowtham"]
-        ],
-        "returnedRows": 1
+        "data": [["c1ce2a48-9d03-4eed-938d-f354db79c425", "Gowtham"]],
+        "returnedRows": 1,
     }
 
     response = QueryResponse.from_dict(data)
@@ -323,7 +314,11 @@ def test_query_response_from_arrow_bytes_concatenates_multiple_record_batches():
 
     assert response.returned_rows == 5
     assert response.data == [
-        ["Alice", 30], ["Bob", 25], ["Carol", 40], ["Dave", 50], ["Eve", 60],
+        ["Alice", 30],
+        ["Bob", 25],
+        ["Carol", 40],
+        ["Dave", 50],
+        ["Eve", 60],
     ]
 
 
@@ -346,8 +341,9 @@ def test_query_response_from_arrow_bytes_attaches_supplied_status():
     x-hyperdb-status header) is attached to the Arrow-parsed response."""
     fields = [pa.field("name", pa.string(), nullable=True)]
     raw = build_arrow_ipc_bytes(fields, [("Alice",)])
-    status = QueryStatus.from_dict({"queryId": "q1", "completionStatus": "FINISHED",
-                                     "progress": 1.0, "rowCount": 1, "chunkCount": 1})
+    status = QueryStatus.from_dict(
+        {"queryId": "q1", "completionStatus": "FINISHED", "progress": 1.0, "rowCount": 1, "chunkCount": 1}
+    )
 
     response = QueryResponse.from_arrow_bytes(raw, status=status)
 

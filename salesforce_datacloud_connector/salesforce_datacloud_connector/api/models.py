@@ -25,6 +25,7 @@ class QueryStatus:
         chunk_count: Number of chunks the results are divided into
         expiration_time: When the query results expire (if applicable)
     """
+
     query_id: str
     completion_status: str
     progress: float
@@ -200,6 +201,7 @@ class ColumnMetadata:
         precision: Numeric precision (for Numeric types)
         scale: Numeric scale (for Numeric types)
     """
+
     name: str
     type: str
     nullable: bool = True
@@ -257,6 +259,7 @@ class QueryResponse:
         returned_rows: Number of rows returned in this response
         status: Query status information (optional, not present in all responses)
     """
+
     data: List[List[Any]]
     metadata: List[ColumnMetadata]
     returned_rows: int
