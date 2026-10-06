@@ -46,6 +46,9 @@ markers = [
     "e2e: tests requiring a live Salesforce org (skipped in CI by default)",
 ]
 
+[tool.coverage.run]
+source = ["salesforce_datacloud_connector"]
+
 [tool.ruff]
 line-length = 120
 
