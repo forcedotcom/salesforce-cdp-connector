@@ -60,7 +60,7 @@ def test_create_multiple_cursors():
 def test_threads_share_connection_with_separate_cursors():
     """Concurrent queries on one connection keep each cursor's rows separate."""
     assert sfdc.threadsafety == 2
-    conn = Connection(create_mock_token_provider())
+    conn = Connection(create_mock_token_provider(), output_format="json")
     requests_started = threading.Barrier(8)
 
     def fake_request(method, url, headers=None, params=None, json=None, timeout=None):
