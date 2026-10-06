@@ -41,6 +41,21 @@ class TestConvertLowercaseV3Types:
         assert result == Decimal("123.456789")
         assert isinstance(result, Decimal)
 
+    def test_numeric_decimal_input_is_preserved_exactly(self):
+        """Arrow's decimal128/decimal256 columns decode to an exact Decimal
+        before this function ever sees them (see from_arrow_bytes); it must
+        not re-coerce that value through float() and lose precision, even
+        at a precision/scale that would otherwise select the float branch."""
+        value = Decimal("3.14159265358979")
+        result = convert_datacloud_value(value, "numeric", precision=15, scale=14)
+        assert result == value
+        assert isinstance(result, Decimal)
+
+    def test_numeric_decimal_input_with_scale_zero_is_int(self):
+        result = convert_datacloud_value(Decimal("42"), "numeric", scale=0)
+        assert result == 42
+        assert isinstance(result, int)
+
     def test_integer_and_bigint_are_int(self):
         assert convert_datacloud_value("7", "integer") == 7
         assert isinstance(convert_datacloud_value("7", "integer"), int)
@@ -121,6 +136,17 @@ class TestConvertLowercaseV3Types:
         dicts/lists already; str()-ing that would corrupt it into repr()."""
         value = {"a": 1}
         assert convert_datacloud_value(value, "json") is value
+
+    def test_varchar_json_like_string_passes_through_unparsed(self):
+        """Arrow has no distinct physical type for json columns -- they
+        arrive tagged "varchar" like any other string column (see
+        models.py's _ARROW_TYPE_TO_DATACLOUD_TYPE comment), so the "json"
+        branch above is unreachable from the Arrow path. This locks in that
+        documented limitation: a json column's raw text comes through the
+        "varchar" branch unparsed, not through json.loads()."""
+        result = convert_datacloud_value('{"a":1}', "varchar")
+        assert result == '{"a":1}'
+        assert isinstance(result, str)
 
     def test_interval_passes_through_unchanged(self):
         """Neither wire representation (ISO-8601 string over JSON, a raw

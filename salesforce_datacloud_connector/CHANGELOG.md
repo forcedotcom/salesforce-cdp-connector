@@ -26,8 +26,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `-1` at the start of each `execute()` so a failed execution does not report a
   stale count (DB-API 2.0 / PEP 249).
 - Query results now default to the Arrow IPC wire format instead of JSON.
-  Pass `output_format="json"` to `cursor.execute()`/`cursor.executemany()` to
-  opt back into the previous JSON behavior.
+  Pass `output_format="json"` to `connect()` to opt back into the previous
+  JSON behavior.
 - `pyarrow` moved out of the `[pandas]` optional dependency extra into the
   dev dependency group — it is only needed to build Arrow IPC test fixtures,
   not by `pandas` support at runtime (`nanoarrow` is the runtime Arrow

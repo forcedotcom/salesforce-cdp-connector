@@ -118,9 +118,19 @@ def convert_datacloud_value(value: Any, datacloud_type: str,
 
         # Numeric → Decimal/int/float
         elif normalized_type == "numeric":
-            # If scale is 0, return as int
+            # If scale is 0, return as int (lossless for both wire formats:
+            # scale 0 has no fractional digits to lose)
             if scale == 0:
                 return int(value)
+            # Arrow's decimal128/decimal256 columns already decode to an
+            # exact Decimal (see QueryResponse.from_arrow_bytes) -- the
+            # float/Decimal coercion below exists only for the JSON wire
+            # format, which hands back a plain str/number with no exact
+            # representation of its own. Re-coercing an already-exact Arrow
+            # Decimal through float() here would throw away precision for
+            # no reason, so pass it through unchanged.
+            elif isinstance(value, Decimal):
+                return value
             # If precision/scale not specified or low precision, use float
             elif precision is None or precision <= 15:
                 return float(value)
@@ -146,12 +156,18 @@ def convert_datacloud_value(value: Any, datacloud_type: str,
         elif normalized_type == "bytea":
             return value
 
-        # json → parsed Python object, regardless of output format. The JSON
-        # output format pre-parses json columns into native dicts/lists, but
-        # the Arrow output format gives the raw JSON text as a plain string
-        # (confirmed live) -- normalize the Arrow case so callers see the
-        # same Python value either way. str(value) is deliberately avoided:
-        # it would turn an already-parsed dict into its repr(), not JSON.
+        # json → parsed Python object. Only reachable when output_format=
+        # "json": the v3 JSON body tags these columns "json" explicitly, and
+        # may hand back either an already-parsed dict/list or (for some
+        # columns) the raw JSON text as a string, so this normalizes both to
+        # the parsed value. str(value) is deliberately avoided: it would turn
+        # an already-parsed dict into its repr(), not JSON.
+        #
+        # Arrow has no distinct physical type for json -- it arrives tagged
+        # "varchar" like any other string column (see models.py's
+        # _ARROW_TYPE_TO_DATACLOUD_TYPE comment) and is returned as the raw
+        # JSON text, unparsed. output_format="json" is required to get a
+        # parsed value for these columns.
         elif normalized_type == "json":
             if isinstance(value, str):
                 return json.loads(value)

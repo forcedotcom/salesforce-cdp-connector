@@ -437,6 +437,12 @@ class DataCloudQueryClient:
                 "GET", url, params=params, accept=self._data_accept_header
             )
             if self._output_format == "arrow":
+                # Same zero-length-body case as execute_query: under ADAPTIVE
+                # transfer mode, a chunk that hasn't produced any Arrow binary
+                # part yet still comes back 200 with an empty body rather than
+                # a parseable (even if empty) IPC stream.
+                if not response.content:
+                    return QueryResponse(data=[], metadata=[], returned_rows=0)
                 return QueryResponse.from_arrow_bytes(response.content)
             return QueryResponse.from_dict(response.json())
         except Exception as e:
