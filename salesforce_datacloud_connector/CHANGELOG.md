@@ -17,6 +17,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   https://tableau.github.io/hyper-db/docs/hyper-api/connection#connection-settings.
 
 ### Changed
+- Raised DB-API `threadsafety` from `1` to `2`: threads can share a Connection
+  when each thread uses its own cursor. CDP token cache access is synchronized
+  so concurrent cache misses perform one exchange.
 - `cursor.rowcount` now reports the total number of rows in the result set
   after `execute()`, as read from the server's query status, instead of always
   returning `-1`. It remains `-1` before any query is executed and is reset to

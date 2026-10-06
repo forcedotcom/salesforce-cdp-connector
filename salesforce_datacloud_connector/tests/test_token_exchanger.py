@@ -2,8 +2,10 @@
 Tests for DataCloudTokenExchanger (core token → CDP token exchange).
 """
 
+import threading
 import time
-from unittest.mock import patch
+from concurrent.futures import ThreadPoolExecutor
+from unittest.mock import Mock, patch
 
 import pytest
 import responses
@@ -11,6 +13,39 @@ import responses
 from salesforce_datacloud_connector.auth.oauth import JWTAuthenticator
 from salesforce_datacloud_connector.auth.token_exchanger import DataCloudTokenExchanger
 from salesforce_datacloud_connector.exceptions import OperationalError
+
+
+def test_concurrent_cache_misses_share_one_exchange():
+    """Threads sharing one exchanger reuse the first cold-miss result."""
+    auth = Mock()
+    auth.get_oauth_token.return_value = "core_token"
+    auth.get_instance_url.return_value = "https://org.my.salesforce.com"
+    exchanger = DataCloudTokenExchanger(auth)
+    start = threading.Barrier(8)
+    entered = threading.Event()
+    release = threading.Event()
+
+    def exchange(instance_url, core_token):
+        entered.set()
+        assert release.wait(5)
+        return "cdp_token", 3600, "https://tenant.c360a.salesforce.com"
+
+    def worker(_):
+        start.wait(timeout=5)
+        return exchanger.get_cdp_token()
+
+    with patch.object(exchanger, "_exchange_token", side_effect=exchange) as exchange_mock:
+        with ThreadPoolExecutor(max_workers=8) as pool:
+            futures = [pool.submit(worker, i) for i in range(8)]
+            assert entered.wait(5)
+            # All workers have crossed the start barrier. Hold the exchange
+            # briefly so unlocked cache misses would enter it concurrently.
+            time.sleep(0.05)
+            release.set()
+            assert [future.result(timeout=5) for future in futures] == ["cdp_token"] * 8
+
+    assert exchange_mock.call_count == 1
+    assert auth.get_oauth_token.call_count == 1
 
 
 @responses.activate
