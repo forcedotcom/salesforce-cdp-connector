@@ -85,6 +85,7 @@ def connect(
     target_org: Optional[str] = None,
     user_agent: Optional[str] = None,
     query_settings: Optional[Dict[str, str]] = None,
+    output_format: str = "arrow",
 ) -> Connection:
     """
     Create a connection to Salesforce Data Cloud.
@@ -114,12 +115,17 @@ def connect(
         query_settings: Connection-wide default query settings (e.g. {"time_zone": "UTC"}),
             merged into every cursor.execute() call on this connection. See
             https://tableau.github.io/hyper-db/docs/hyper-api/connection#connection-settings
+        output_format: "arrow" (default) or "json". Selects the query result
+            wire format negotiated with off-core Query v3. Arrow is the
+            recommended default; "json" remains available as an opt-in
+            fallback.
 
     Returns:
         Connection instance
 
     Raises:
-        ValueError: If required parameters are missing for the selected auth type
+        ValueError: If required parameters are missing for the selected auth type,
+            or if output_format is not "arrow" or "json"
         OperationalError: If authentication fails
 
     Examples:
@@ -151,6 +157,15 @@ def connect(
             refresh_token="refresh_token_here"
         )
     """
+    # Validate output_format before any network I/O (authentication happens
+    # below via the token exchanger). Without this, an invalid output_format
+    # would only surface after a real login round-trip, inside
+    # DataCloudQueryClient.__init__ via Connection.__init__.
+    if output_format not in ("arrow", "json"):
+        raise ValueError(
+            f"Invalid output_format: {output_format!r}. Must be 'arrow' or 'json'"
+        )
+
     # Validate and create authenticator based on auth_type
     if auth_type == "username_password":
         if not all([username, password, client_id, client_secret]):
@@ -220,6 +235,7 @@ def connect(
         workload=workload,
         user_agent=user_agent,
         query_settings=query_settings,
+        output_format=output_format,
     )
 
 

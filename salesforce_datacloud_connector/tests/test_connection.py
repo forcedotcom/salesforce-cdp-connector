@@ -60,7 +60,7 @@ def test_create_multiple_cursors():
 def test_threads_share_connection_with_separate_cursors():
     """Concurrent queries on one connection keep each cursor's rows separate."""
     assert sfdc.threadsafety == 2
-    conn = Connection(create_mock_token_provider())
+    conn = Connection(create_mock_token_provider(), output_format="json")
     requests_started = threading.Barrier(8)
 
     def fake_request(method, url, headers=None, params=None, json=None, timeout=None):
@@ -374,6 +374,32 @@ def test_connect_client_credentials_requires_secret():
             client_id="test_client_id",
             # client_secret intentionally omitted
         )
+
+
+def test_connect_invalid_output_format_fails_before_any_network_call():
+    """connect() must reject an invalid output_format before constructing an
+    authenticator or performing any network I/O, not just later inside
+    DataCloudQueryClient.__init__ (which only runs after login)."""
+    from unittest.mock import patch
+
+    import pytest
+    import salesforce_datacloud_connector as sfdc
+    from salesforce_datacloud_connector.auth.oauth import UsernamePasswordAuthenticator
+
+    with patch.object(
+        UsernamePasswordAuthenticator, "_fetch_new_token",
+        side_effect=AssertionError("authenticator must not be reached"),
+    ):
+        with pytest.raises(ValueError, match="output_format"):
+            sfdc.connect(
+                login_url="https://login.salesforce.com",
+                auth_type="username_password",
+                username="user@example.com",
+                password="password",
+                client_id="client_id",
+                client_secret="client_secret",
+                output_format="xml",
+            )
 
 
 def test_connect_positional_args_backward_compatible():

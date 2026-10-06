@@ -100,13 +100,26 @@ class Cursor:
             self._buffer_offset = 0
             return
 
-        # Fetch chunk from server
+        # Fetch chunk from server. omit_schema is requested but the server
+        # does not currently honor it (see DataCloudQueryClient.fetch_results),
+        # so metadata is always present here -- which is exactly what lets us
+        # recover it below when execute()'s initial POST had none.
         response = self._client.fetch_results(
             query_id=self._query_id,
             offset=offset,
             row_limit=1000000,  # Large limit, server determines actual chunk
-            omit_schema=True,  # We already have metadata
+            omit_schema=True,
         )
+
+        # execute() can leave self._metadata empty: under ADAPTIVE transfer
+        # mode, a still-running query's initial POST response has no Arrow
+        # binary part yet, so there's no schema to read (see
+        # DataCloudQueryClient.execute_query). This first fetch_results call
+        # is the earliest point a schema becomes available -- capture it and
+        # rebuild description so cursor.description isn't stuck at None.
+        if not self._metadata and response.metadata:
+            self._metadata = response.metadata
+            self._build_description()
 
         # Update buffer
         self._buffer = response.data

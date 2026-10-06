@@ -273,6 +273,53 @@ def test_execute_async_query():
     client.poll_until_complete.assert_called_once_with("q1")
 
 
+def test_async_execute_recovers_metadata_from_first_fetch_results():
+    """A still-running Arrow query's initial POST response can have no
+    metadata at all (zero-length body, see DataCloudQueryClient.execute_query).
+    cursor.description must not get stuck at None forever, and type
+    conversion (e.g. numeric -> int) must still apply once the first
+    fetch_results response -- which does carry a schema -- comes back."""
+    client = create_mock_client()
+    cursor = Cursor(client)
+
+    client.execute_query.return_value = QueryResponse(
+        data=[],
+        metadata=[],  # no schema yet: query was still running, empty Arrow body
+        returned_rows=0,
+        status=QueryStatus(
+            query_id="q1",
+            completion_status="Running",
+            progress=0.1,
+            row_count=0,
+            chunk_count=0,
+        ),
+    )
+    client.poll_until_complete.return_value = QueryStatus(
+        query_id="q1",
+        completion_status="Finished",
+        progress=1.0,
+        row_count=1,
+        chunk_count=1,
+    )
+    client.fetch_results.return_value = QueryResponse(
+        data=[["Alice", "30"]],
+        metadata=[
+            ColumnMetadata(name="name", type="varchar"),
+            ColumnMetadata(name="age", type="numeric", scale=0),
+        ],
+        returned_rows=1,
+    )
+
+    cursor.execute("SELECT name, age FROM users")
+
+    assert cursor.description is not None
+    assert [d[0] for d in cursor.description] == ["name", "age"]
+
+    row = cursor.fetchone()
+    assert row == ("Alice", 30)
+    assert isinstance(row[1], int)
+
+
 def test_execute_with_parameters():
     """Test executing a parameterized query."""
     client = create_mock_client()
