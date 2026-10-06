@@ -1,0 +1,23 @@
+coverage:
+  status:
+    patch:
+      default:
+        target: 80%
+        threshold: 5%
+        base: auto
+        if_ci_failed: error
+
+comment:
+  layout: "header,diff,tree,reach"
+  behavior: default
+  require_changes: false
+  require_base: false
+  require_head: true
+  branches:
+    - master
+
+# v1 (salesforcecdpconnector/) is deprecated and not covered by Codecov;
+# only salesforce_datacloud_connector/ (v2) is measured.
+ignore:
+  - "salesforcecdpconnector/**"
+  - "salesforce_datacloud_connector/tests/**"

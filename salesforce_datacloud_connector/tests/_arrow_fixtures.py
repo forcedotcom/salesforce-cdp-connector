@@ -30,9 +30,7 @@ def build_arrow_ipc_bytes(fields: Sequence[pa.Field], rows: List[Tuple[Any, ...]
     return build_arrow_ipc_bytes_multi_batch(fields, [rows] if rows else [])
 
 
-def build_arrow_ipc_bytes_multi_batch(
-    fields: Sequence[pa.Field], row_batches: List[List[Tuple[Any, ...]]]
-) -> bytes:
+def build_arrow_ipc_bytes_multi_batch(fields: Sequence[pa.Field], row_batches: List[List[Tuple[Any, ...]]]) -> bytes:
     """
     Serialize one or more row batches into a single Arrow IPC stream, each
     batch written as its own record batch (`writer.write_batch()` call).

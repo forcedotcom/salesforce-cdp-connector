@@ -40,6 +40,5 @@ def test_version_matches_pyproject():
     module_version = sfdc.__version__
 
     assert module_version == pyproject_version, (
-        f"Version mismatch: __init__.__version__ = {module_version}, "
-        f"pyproject.toml version = {pyproject_version}"
+        f"Version mismatch: __init__.__version__ = {module_version}, pyproject.toml version = {pyproject_version}"
     )

@@ -83,9 +83,9 @@ DATACLOUD_TYPE_TO_DBAPI = {
 _DATACLOUD_TYPE_TO_DBAPI_LOWER = {key.lower(): value for key, value in DATACLOUD_TYPE_TO_DBAPI.items()}
 
 
-def convert_datacloud_value(value: Any, datacloud_type: str,
-                           precision: Optional[int] = None,
-                           scale: Optional[int] = None) -> Any:
+def convert_datacloud_value(
+    value: Any, datacloud_type: str, precision: Optional[int] = None, scale: Optional[int] = None
+) -> Any:
     """
     Convert a value from Data Cloud type to Python type.
 
@@ -223,9 +223,7 @@ def convert_datacloud_value(value: Any, datacloud_type: str,
             return value
 
     except (ValueError, TypeError) as e:
-        raise ValueError(
-            f"Cannot convert value {value!r} to type {datacloud_type}: {e}"
-        ) from e
+        raise ValueError(f"Cannot convert value {value!r} to type {datacloud_type}: {e}") from e
 
 
 def infer_sql_parameter_type(value: Any) -> str:
@@ -290,11 +288,11 @@ def build_description_tuple(column_metadata: dict) -> tuple:
     internal_size = None
 
     return (
-        name,           # name
-        type_code,      # type_code
-        display_size,   # display_size
+        name,  # name
+        type_code,  # type_code
+        display_size,  # display_size
         internal_size,  # internal_size
-        precision,      # precision
-        scale,          # scale
-        nullable,       # null_ok
+        precision,  # precision
+        scale,  # scale
+        nullable,  # null_ok
     )

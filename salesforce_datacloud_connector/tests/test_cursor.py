@@ -366,9 +366,7 @@ def test_execute_passes_settings_to_client():
 
     cursor.execute("SELECT 1", settings={"time_zone": "UTC"})
 
-    client.execute_query.assert_called_once_with(
-        "SELECT 1", None, settings={"time_zone": "UTC"}
-    )
+    client.execute_query.assert_called_once_with("SELECT 1", None, settings={"time_zone": "UTC"})
 
 
 def test_execute_unsupported_operations():
@@ -640,6 +638,7 @@ def test_fetch_before_execute():
 def test_fetch_df_returns_dataframe_when_pandas_present():
     """R6: fetch_df() returns a pandas DataFrame built from the fetched rows + description."""
     import pytest
+
     pytest.importorskip("pandas")  # only run when the [pandas] extra is installed
 
     from unittest.mock import Mock
@@ -649,8 +648,7 @@ def test_fetch_df_returns_dataframe_when_pandas_present():
     # Simulate an executed query with results:
     # _check_query_executed() passes when _query_id is not None; _closed defaults to False.
     cursor._query_id = "query123"
-    cursor._description = [("name", None, None, None, None, None, None),
-                           ("age", None, None, None, None, None, None)]
+    cursor._description = [("name", None, None, None, None, None, None), ("age", None, None, None, None, None, None)]
     cursor.fetchall = Mock(return_value=[("Alice", 30), ("Bob", 25)])
 
     df = cursor.fetch_df()
