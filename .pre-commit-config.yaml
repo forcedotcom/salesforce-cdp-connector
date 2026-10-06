@@ -1,0 +1,11 @@
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.15.12
+    hooks:
+      - id: ruff-check
+        name: ruff check (v2 connector)
+        args: [--fix]
+        files: ^salesforce_datacloud_connector/
+      - id: ruff-format
+        name: ruff format (v2 connector)
+        files: ^salesforce_datacloud_connector/

@@ -46,6 +46,21 @@ cd salesforce_datacloud_connector && uv run ruff format .
 
 CI enforces both `ruff check` and `ruff format --check` for v2.
 
+## Pre-commit hook (v2 only)
+
+v2 (`salesforce_datacloud_connector/`) has a local git hook that runs `ruff check --fix` and `ruff format` on
+staged files before every commit, so lint/format issues are caught (and usually auto-fixed) before they ever
+reach CI. It's scoped to `salesforce_datacloud_connector/` only — v1 commits are unaffected.
+
+One-time setup per clone:
+
+```shell
+cd salesforce_datacloud_connector && uv sync --all-extras --dev
+uv run --project salesforce_datacloud_connector pre-commit install
+```
+
+If a commit is rejected because files were auto-fixed, just `git add` the fixed files and commit again.
+
 ## Filing pull requests
 
 - Branch off `master` — it is the trunk for both packages.
