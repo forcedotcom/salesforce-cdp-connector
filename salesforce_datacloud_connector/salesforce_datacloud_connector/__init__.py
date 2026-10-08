@@ -313,4 +313,4 @@ __all__ = [
 ]
 
 # Package metadata
-__version__ = "2.0.0b2"
+__version__ = "2.0.0b2"  # x-release-please-version
