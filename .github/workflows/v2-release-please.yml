@@ -1,0 +1,26 @@
+name: v2 Release Please
+
+# Opens/updates a release PR for salesforce-datacloud-connector (v2) based on
+# conventional commits. Merging it creates the tag and GitHub release, which
+# triggers v2-publish.yml. v1 (salesforcecdpconnector/) is intentionally not
+# configured and is never released from here.
+
+on:
+  push:
+    branches: [master]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  release-please:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: googleapis/release-please-action@v4
+        with:
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+          # A PAT is required: releases created with GITHUB_TOKEN do not
+          # trigger other workflows, so v2-publish.yml would never run.
+          token: ${{ secrets.RELEASE_PLEASE_TOKEN }}
