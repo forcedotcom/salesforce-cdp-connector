@@ -3,6 +3,7 @@
   "packages": {
     "salesforce_datacloud_connector": {
       "release-type": "python",
+      "release-as": "2.0.0",
       "package-name": "salesforce-datacloud-connector",
       "component": "salesforce-datacloud-connector",
       "include-component-in-tag": true,

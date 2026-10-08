@@ -56,6 +56,7 @@ v2 releases are automated with [release-please](https://github.com/googleapis/re
 
 - Use [Conventional Commits](https://www.conventionalcommits.org/) for PR titles (enforced by `pr-title.yml`; PRs are squash-merged, so the title becomes the commit message). `feat:` bumps minor, `fix:` bumps patch, `feat!:` / `BREAKING CHANGE:` bumps major. Only commits touching `salesforce_datacloud_connector/` count.
 - On every push to `master`, release-please opens or updates a "release" PR that bumps `pyproject.toml` and `__version__` and updates `salesforce_datacloud_connector/CHANGELOG.md`. Don't edit the changelog by hand.
+- The config currently pins `"release-as": "2.0.0"` for the first GA release. Remove that line from `release-please-config.json` once 2.0.0 is out, or every later release PR will keep proposing 2.0.0.
 - Merging that PR creates the tag `salesforce-datacloud-connector-<version>` and a GitHub release, which triggers `v2-publish.yml` to test, build and publish to PyPI.
 - Requires the `RELEASE_PLEASE_TOKEN` repo secret (a PAT with `contents` and `pull-requests` write) so the release triggers the publish workflow, and the "Allow GitHub Actions to create and approve pull requests" repo setting.
 
