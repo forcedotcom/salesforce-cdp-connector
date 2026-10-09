@@ -25,7 +25,8 @@ Basic usage:
     conn.close()
 """
 
-from typing import Dict, Optional
+import os
+from typing import Dict, Optional, Union
 
 # DB-API 2.0 module globals
 apilevel = "2.0"  # DB-API specification version
@@ -68,6 +69,8 @@ from .auth.oauth import (
 )
 
 # Import token exchanger
+from .http_options import HttpOptions
+from .auth.direct_token import DirectCdpTokenProvider
 from .auth.token_exchanger import DataCloudTokenExchanger
 
 
@@ -78,7 +81,7 @@ def connect(
     password: Optional[str] = None,
     client_id: Optional[str] = None,
     client_secret: Optional[str] = None,
-    jwt_private_key: Optional[str] = None,
+    jwt_private_key: Optional[Union[str, bytes, os.PathLike]] = None,
     refresh_token: Optional[str] = None,
     dataspace: Optional[str] = None,
     workload: Optional[str] = None,
@@ -86,6 +89,8 @@ def connect(
     user_agent: Optional[str] = None,
     query_settings: Optional[Dict[str, str]] = None,
     output_format: str = "arrow",
+    cdp_token: Optional[str] = None,
+    tenant_endpoint: Optional[str] = None,
 ) -> Connection:
     """
     Create a connection to Salesforce Data Cloud.
@@ -98,17 +103,24 @@ def connect(
         login_url: Salesforce login URL (default: "https://login.salesforce.com")
                   Use "https://test.salesforce.com" for sandboxes
         auth_type: Authentication type - "username_password", "jwt", "refresh_token",
-                   "client_credentials", or "sf_cli"
+                   "client_credentials", "sf_cli", or "cdp_token"
         username: Salesforce username (required for username_password and jwt)
         password: Salesforce password (required for username_password)
         client_id: Connected app client ID (required for all auth types except sf_cli)
         client_secret: Connected app client secret (required for username_password and refresh_token)
-        jwt_private_key: Private key in PEM format for JWT flow (required for jwt)
+        jwt_private_key: RSA private key for the JWT flow (required for jwt): PEM
+            text or bytes, or a path to a PEM file. Validated before any network I/O.
         refresh_token: OAuth refresh token (required for refresh_token)
         dataspace: Data space name (default: "default")
         workload: Optional workload name for logging/debugging
         target_org: Org alias or username for the sf_cli auth type. If omitted,
                     the Salesforce CLI's own default org is used.
+        cdp_token: Data Cloud (CDP) access token for the cdp_token auth type, a JWT
+                   with an ``exp`` claim. Skips OAuth login and token exchange;
+                   the token cannot be refreshed, so once it expires the
+                   connection fails and a new one must be created.
+        tenant_endpoint: Data Cloud tenant endpoint for the cdp_token auth type
+                   (e.g. "tenant.c360a.salesforce.com"; scheme optional).
         user_agent: Optional caller identifier appended to the driver's
                     User-Agent header (e.g. "my-app/1.0"). The header sent is
                     "salesforce-cdp-connector/{version} {user_agent}".
@@ -119,6 +131,7 @@ def connect(
             wire format negotiated with off-core Query v3. Arrow is the
             recommended default; "json" remains available as an opt-in
             fallback.
+
 
     Returns:
         Connection instance
@@ -166,6 +179,23 @@ def connect(
             f"Invalid output_format: {output_format!r}. Must be 'arrow' or 'json'"
         )
 
+    # One Session (30s timeout) shared by the OAuth, token-exchange and query calls.
+    http = HttpOptions()
+
+    # A pre-minted CDP token needs no authenticator or token exchange.
+    if auth_type == "cdp_token":
+        if not all([cdp_token, tenant_endpoint]):
+            raise ValueError("cdp_token auth requires: cdp_token, tenant_endpoint")
+        return Connection(
+            DirectCdpTokenProvider(cdp_token, tenant_endpoint),
+            dataspace=dataspace,
+            workload=workload,
+            user_agent=user_agent,
+            query_settings=query_settings,
+            output_format=output_format,
+            http=http,
+        )
+
     # Validate and create authenticator based on auth_type
     if auth_type == "username_password":
         if not all([username, password, client_id, client_secret]):
@@ -178,16 +208,23 @@ def connect(
             password=password,
             client_id=client_id,
             client_secret=client_secret,
+            http=http,
         )
 
     elif auth_type == "jwt":
         if not all([username, client_id, jwt_private_key]):
             raise ValueError("jwt auth requires: username, client_id, jwt_private_key")
+        if client_secret:
+            raise ValueError(
+                "client_secret is not allowed for jwt auth: the JWT bearer flow "
+                "does not use a client secret"
+            )
         authenticator = JWTAuthenticator(
             login_url=login_url,
             client_id=client_id,
             username=username,
             jwt_private_key=jwt_private_key,
+            http=http,
         )
 
     elif auth_type == "refresh_token":
@@ -200,6 +237,7 @@ def connect(
             client_id=client_id,
             client_secret=client_secret,
             refresh_token=refresh_token,
+            http=http,
         )
 
     elif auth_type == "client_credentials":
@@ -211,6 +249,7 @@ def connect(
             login_url=login_url,
             client_id=client_id,
             client_secret=client_secret,
+            http=http,
         )
 
     elif auth_type == "sf_cli":
@@ -219,13 +258,14 @@ def connect(
     else:
         raise ValueError(
             f"Invalid auth_type: {auth_type}. "
-            f"Must be 'username_password', 'jwt', 'refresh_token', 'client_credentials', or 'sf_cli'"
+            f"Must be 'username_password', 'jwt', 'refresh_token', 'client_credentials', 'sf_cli', or 'cdp_token'"
         )
 
     # Wrap authenticator in token exchanger for CDP token + tenant endpoint
     exchanger = DataCloudTokenExchanger(
         core_authenticator=authenticator,
         dataspace=dataspace,
+        http=http,
     )
 
     # Create and return connection with exchanger
@@ -236,6 +276,7 @@ def connect(
         user_agent=user_agent,
         query_settings=query_settings,
         output_format=output_format,
+        http=http,
     )
 
 
@@ -277,6 +318,7 @@ __all__ = [
     "ClientCredentialsAuthenticator",
     "SfCliAuthenticator",
     "DataCloudTokenExchanger",
+    "DirectCdpTokenProvider",
 ]
 
 # Package metadata

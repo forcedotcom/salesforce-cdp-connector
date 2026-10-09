@@ -8,6 +8,7 @@ from unittest.mock import patch
 import pytest
 import responses
 
+from tests._keys import TEST_RSA_PRIVATE_KEY_PEM
 from salesforce_datacloud_connector.auth.oauth import (
     JWTAuthenticator,
     RefreshTokenAuthenticator,
@@ -124,10 +125,7 @@ def test_jwt_auth_success():
         status=200,
     )
 
-    # Mock private key (not a real key)
-    mock_private_key = """-----BEGIN RSA PRIVATE KEY-----
-MIIEpAIBAAKCAQEA0Z3VS5JJcds3xfn/ygWyF6F9qoUPCCMXScQXXMRDdqmqPkCN
------END RSA PRIVATE KEY-----"""
+    mock_private_key = TEST_RSA_PRIVATE_KEY_PEM
 
     with patch("jwt.encode", return_value="mock_jwt_token"):
         auth = JWTAuthenticator(

@@ -215,6 +215,26 @@ Each call to `sfdc.connect(...)` shells out to `sf org display` and
 own token refresh, so there's nothing to configure or rotate. Requires the
 `sf` executable to be on `PATH`.
 
+### Pre-minted Data Cloud token
+
+If another service already minted a Data Cloud (CDP) access token, pass it
+directly together with the tenant endpoint. OAuth login and the token exchange
+are skipped (mirrors the JDBC driver's `cdpToken` / `tenantUrl` properties):
+
+```python
+conn = sfdc.connect(
+    auth_type="cdp_token",
+    cdp_token=cdp_jwt,
+    tenant_endpoint="tenant.c360a.salesforce.com",
+    dataspace="default",
+)
+```
+
+The token must be a JWT with an `exp` claim; `connect()` raises immediately if
+it is malformed or already expired. **It cannot be refreshed**: once it
+expires, queries fail with an error and you must create a new connection with
+a fresh token.
+
 ### Username/Password (deprecated)
 
 Username/password authentication is **deprecated** and will be removed in a

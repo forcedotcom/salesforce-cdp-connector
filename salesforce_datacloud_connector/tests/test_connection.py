@@ -10,6 +10,7 @@ from unittest.mock import Mock, patch
 import pytest
 
 import salesforce_datacloud_connector as sfdc
+from tests._keys import TEST_RSA_PRIVATE_KEY_PEM
 from salesforce_datacloud_connector.connection import Connection
 from salesforce_datacloud_connector.cursor import Cursor
 from salesforce_datacloud_connector.exceptions import InterfaceError
@@ -93,7 +94,7 @@ def test_threads_share_connection_with_separate_cursors():
         finally:
             cursor.close()
 
-    with patch("requests.request", side_effect=fake_request):
+    with patch("requests.Session.request", side_effect=fake_request):
         with ThreadPoolExecutor(max_workers=8) as pool:
             results = list(pool.map(run_query, range(8)))
 
@@ -265,7 +266,7 @@ def test_connect_wires_token_exchanger():
                 auth_type="jwt",
                 username="test@example.com",
                 client_id="test_client_id",
-                jwt_private_key="-----BEGIN PRIVATE KEY-----\ntest_key\n-----END PRIVATE KEY-----",
+                jwt_private_key=TEST_RSA_PRIVATE_KEY_PEM,
                 dataspace="test_ds",
                 workload="test_workload"
             )
@@ -353,7 +354,7 @@ def test_connect_passes_query_settings():
                 auth_type="jwt",
                 username="test@example.com",
                 client_id="test_client_id",
-                jwt_private_key="-----BEGIN PRIVATE KEY-----\ntest_key\n-----END PRIVATE KEY-----",
+                jwt_private_key=TEST_RSA_PRIVATE_KEY_PEM,
                 query_settings={"time_zone": "UTC"},
             )
 
