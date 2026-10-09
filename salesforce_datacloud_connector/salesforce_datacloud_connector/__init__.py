@@ -28,8 +28,6 @@ Basic usage:
 import os
 from typing import Dict, Optional, Union
 
-import requests
-
 # DB-API 2.0 module globals
 apilevel = "2.0"  # DB-API specification version
 threadsafety = 2  # Threads may share the module and connections, but not cursors
@@ -71,7 +69,6 @@ from .auth.oauth import (
 )
 
 # Import token exchanger
-from .auth._http import RetryConfig
 from .http_options import HttpOptions
 from .auth.direct_token import DirectCdpTokenProvider
 from .auth.token_exchanger import DataCloudTokenExchanger
@@ -92,13 +89,8 @@ def connect(
     user_agent: Optional[str] = None,
     query_settings: Optional[Dict[str, str]] = None,
     output_format: str = "arrow",
-    auth_retry: Optional[RetryConfig] = None,
     cdp_token: Optional[str] = None,
     tenant_endpoint: Optional[str] = None,
-    timeout: float = HttpOptions.DEFAULT_TIMEOUT_SECONDS,
-    verify: Optional[Union[bool, str]] = None,
-    proxies: Optional[Dict[str, str]] = None,
-    session: Optional[requests.Session] = None,
 ) -> Connection:
     """
     Create a connection to Salesforce Data Cloud.
@@ -139,21 +131,7 @@ def connect(
             wire format negotiated with off-core Query v3. Arrow is the
             recommended default; "json" remains available as an opt-in
             fallback.
-        auth_retry: Retry policy for transient (5xx/429/network) failures of the
-            OAuth and CDP token-exchange endpoints, as a RetryConfig
-            (default: 3 retries, exponential backoff from 1s up to 30s).
-            Use RetryConfig(max_retries=0) to disable. Credential errors
-            (400/401/403) are never retried.
 
-        timeout: Per-request timeout in seconds for every HTTP call (OAuth,
-            token exchange, queries). Default 30.
-        verify: TLS verification for every HTTP call: True/False or a path to a
-            CA bundle. Default: requests' behaviour (system/certifi CAs).
-        proxies: Proxy mapping such as {"https": "http://proxy:3128"}. Default:
-            standard proxy environment variables.
-        session: A caller-supplied requests.Session used for every HTTP call
-            (custom adapters, client certs, ...). Mutually exclusive with
-            verify and proxies.
 
     Returns:
         Connection instance
@@ -199,7 +177,8 @@ def connect(
     if output_format not in ("arrow", "json"):
         raise ValueError(f"Invalid output_format: {output_format!r}. Must be 'arrow' or 'json'")
 
-    http = HttpOptions(timeout=timeout, verify=verify, proxies=proxies, session=session)
+    # One Session (30s timeout) shared by the OAuth, token-exchange and query calls.
+    http = HttpOptions()
 
     # A pre-minted CDP token needs no authenticator or token exchange.
     if auth_type == "cdp_token":
@@ -225,7 +204,6 @@ def connect(
             password=password,
             client_id=client_id,
             client_secret=client_secret,
-            retry=auth_retry,
             http=http,
         )
 
@@ -242,7 +220,6 @@ def connect(
             client_id=client_id,
             username=username,
             jwt_private_key=jwt_private_key,
-            retry=auth_retry,
             http=http,
         )
 
@@ -254,7 +231,6 @@ def connect(
             client_id=client_id,
             client_secret=client_secret,
             refresh_token=refresh_token,
-            retry=auth_retry,
             http=http,
         )
 
@@ -265,7 +241,6 @@ def connect(
             login_url=login_url,
             client_id=client_id,
             client_secret=client_secret,
-            retry=auth_retry,
             http=http,
         )
 
@@ -282,7 +257,6 @@ def connect(
     exchanger = DataCloudTokenExchanger(
         core_authenticator=authenticator,
         dataspace=dataspace,
-        retry=auth_retry,
         http=http,
     )
 
@@ -337,7 +311,6 @@ __all__ = [
     "SfCliAuthenticator",
     "DataCloudTokenExchanger",
     "DirectCdpTokenProvider",
-    "RetryConfig",
 ]
 
 # Package metadata

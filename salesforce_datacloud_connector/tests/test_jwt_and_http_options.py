@@ -139,17 +139,7 @@ def test_http_options_validation():
 
 
 @responses.activate
-def test_session_and_timeout_shared_by_auth_exchange_and_query():
-    session = requests.Session()
-    seen = []
-    original_send = session.send
-
-    def spy_send(request, **kwargs):
-        seen.append((request.url, kwargs.get("timeout")))
-        return original_send(request, **kwargs)
-
-    session.send = spy_send
-
+def test_connect_shares_one_http_session_across_auth_and_query():
     responses.post(
         "https://login.salesforce.com/services/oauth2/token",
         json={
@@ -166,42 +156,19 @@ def test_session_and_timeout_shared_by_auth_exchange_and_query():
             "instance_url": "tenant.c360a.salesforce.com",
         },
     )
-    responses.get("https://tenant.c360a.salesforce.com/api/v3/query/abc", json={})
 
     conn = sdc.connect(
-        auth_type="client_credentials",
-        client_id="cid",
-        client_secret="s",
-        session=session,
-        timeout=7,
-    )
-    conn._client._make_request(
-        "GET", "https://tenant.c360a.salesforce.com/api/v3/query/abc"
+        auth_type="client_credentials", client_id="cid", client_secret="s"
     )
 
-    assert [url.split("/")[2] for url, _ in seen] == [
-        "login.salesforce.com",
-        "org.my.salesforce.com",
-        "tenant.c360a.salesforce.com",
-    ]
-    assert {timeout for _, timeout in seen} == {7}
+    exchanger = conn._token_provider
+    http = conn._client._http
+    assert exchanger._http is http
+    assert exchanger._core_authenticator.http is http
+    assert http.timeout == HttpOptions.DEFAULT_TIMEOUT_SECONDS
 
 
-def test_direct_cdp_connection_uses_http_options():
-    import base64
-    import json
-
-    def b64(data):
-        return base64.urlsafe_b64encode(json.dumps(data).encode()).rstrip(b"=").decode()
-
-    token = f"{b64({})}.{b64({'exp': time.time() + 600})}.sig"
-    session = requests.Session()
-    conn = sdc.connect(
-        auth_type="cdp_token",
-        cdp_token=token,
-        tenant_endpoint="t.example.com",
-        session=session,
-        timeout=3,
-    )
-    assert conn._client._http.session is session
-    assert conn._client._http.timeout == 3
+def test_connect_does_not_expose_http_or_retry_knobs():
+    for name in ("auth_retry", "timeout", "verify", "proxies", "session"):
+        with pytest.raises(TypeError):
+            sdc.connect(auth_type="sf_cli", **{name: object()})
