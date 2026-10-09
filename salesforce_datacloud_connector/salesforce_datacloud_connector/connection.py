@@ -56,6 +56,7 @@ class Connection:
         self._client = DataCloudQueryClient(
             tenant_endpoint=token_provider.get_tenant_endpoint(),
             auth_token_getter=token_provider.get_cdp_token,
+            on_unauthorized=token_provider.invalidate_token,
             dataspace=dataspace,
             workload=workload,
             user_agent=user_agent,
