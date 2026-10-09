@@ -10,6 +10,7 @@ from unittest.mock import Mock, patch
 import pytest
 import responses
 
+from tests._keys import TEST_RSA_PRIVATE_KEY_PEM
 from salesforce_datacloud_connector.auth.oauth import JWTAuthenticator
 from salesforce_datacloud_connector.auth.token_exchanger import DataCloudTokenExchanger
 from salesforce_datacloud_connector.exceptions import OperationalError
@@ -81,7 +82,7 @@ def test_jwt_token_exchange_success():
             login_url="https://test.salesforce.com",
             client_id="test_client_id",
             username="test@example.com",
-            jwt_private_key="-----BEGIN RSA PRIVATE KEY-----\nfake\n-----END RSA PRIVATE KEY-----",
+            jwt_private_key=TEST_RSA_PRIVATE_KEY_PEM,
         )
 
         # Create exchanger
@@ -137,7 +138,7 @@ def test_cdp_token_caching_with_no_buffer():
             login_url="https://test.salesforce.com",
             client_id="test_client_id",
             username="test@example.com",
-            jwt_private_key="-----BEGIN RSA PRIVATE KEY-----\nfake\n-----END RSA PRIVATE KEY-----",
+            jwt_private_key=TEST_RSA_PRIVATE_KEY_PEM,
         )
 
         exchanger = DataCloudTokenExchanger(
@@ -244,7 +245,7 @@ def test_cdp_token_invalidation():
             login_url="https://test.salesforce.com",
             client_id="test_client_id",
             username="test@example.com",
-            jwt_private_key="-----BEGIN RSA PRIVATE KEY-----\nfake\n-----END RSA PRIVATE KEY-----",
+            jwt_private_key=TEST_RSA_PRIVATE_KEY_PEM,
         )
 
         exchanger = DataCloudTokenExchanger(
@@ -298,7 +299,7 @@ def test_core_token_refetched_on_natural_cdp_expiry():
             login_url="https://test.salesforce.com",
             client_id="test_client_id",
             username="test@example.com",
-            jwt_private_key="-----BEGIN RSA PRIVATE KEY-----\nfake\n-----END RSA PRIVATE KEY-----",
+            jwt_private_key=TEST_RSA_PRIVATE_KEY_PEM,
         )
 
         exchanger = DataCloudTokenExchanger(
@@ -374,7 +375,7 @@ def test_get_tenant_endpoint_triggers_exchange():
             login_url="https://test.salesforce.com",
             client_id="test_client_id",
             username="test@example.com",
-            jwt_private_key="-----BEGIN RSA PRIVATE KEY-----\nfake\n-----END RSA PRIVATE KEY-----",
+            jwt_private_key=TEST_RSA_PRIVATE_KEY_PEM,
         )
 
         exchanger = DataCloudTokenExchanger(
@@ -420,7 +421,7 @@ def test_cdp_token_exchange_failure():
             login_url="https://test.salesforce.com",
             client_id="test_client_id",
             username="test@example.com",
-            jwt_private_key="-----BEGIN RSA PRIVATE KEY-----\nfake\n-----END RSA PRIVATE KEY-----",
+            jwt_private_key=TEST_RSA_PRIVATE_KEY_PEM,
         )
 
         exchanger = DataCloudTokenExchanger(
@@ -465,7 +466,7 @@ def test_missing_access_token_in_exchange_response():
             login_url="https://test.salesforce.com",
             client_id="test_client_id",
             username="test@example.com",
-            jwt_private_key="-----BEGIN RSA PRIVATE KEY-----\nfake\n-----END RSA PRIVATE KEY-----",
+            jwt_private_key=TEST_RSA_PRIVATE_KEY_PEM,
         )
 
         exchanger = DataCloudTokenExchanger(
@@ -509,7 +510,7 @@ def test_dataspace_included_in_exchange_request():
             login_url="https://test.salesforce.com",
             client_id="test_client_id",
             username="test@example.com",
-            jwt_private_key="-----BEGIN RSA PRIVATE KEY-----\nfake\n-----END RSA PRIVATE KEY-----",
+            jwt_private_key=TEST_RSA_PRIVATE_KEY_PEM,
         )
 
         exchanger = DataCloudTokenExchanger(
@@ -557,7 +558,7 @@ def test_dataspace_omitted_if_none():
             login_url="https://test.salesforce.com",
             client_id="test_client_id",
             username="test@example.com",
-            jwt_private_key="-----BEGIN RSA PRIVATE KEY-----\nfake\n-----END RSA PRIVATE KEY-----",
+            jwt_private_key=TEST_RSA_PRIVATE_KEY_PEM,
         )
 
         exchanger = DataCloudTokenExchanger(
@@ -614,7 +615,7 @@ def test_tenant_endpoint_schemeless_response_gets_https_prefix():
             login_url="https://test.salesforce.com",
             client_id="test_client_id",
             username="test@example.com",
-            jwt_private_key="-----BEGIN RSA PRIVATE KEY-----\nfake\n-----END RSA PRIVATE KEY-----",
+            jwt_private_key=TEST_RSA_PRIVATE_KEY_PEM,
         )
         exchanger = DataCloudTokenExchanger(core_authenticator=jwt_auth, dataspace="default")
 

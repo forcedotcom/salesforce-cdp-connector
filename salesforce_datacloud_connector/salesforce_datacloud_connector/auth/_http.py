@@ -15,6 +15,7 @@ from typing import Any, Dict, Optional
 import requests
 
 from ..exceptions import OperationalError
+from ..http_options import HttpOptions
 
 
 @dataclass(frozen=True)
@@ -89,7 +90,7 @@ def post_with_retry(
     retry: Optional[RetryConfig] = None,
     data: Optional[Dict[str, Any]] = None,
     params: Optional[Dict[str, Any]] = None,
-    timeout: float = 30,
+    http: Optional[HttpOptions] = None,
 ) -> Dict[str, Any]:
     """
     POST to a token endpoint and return the parsed JSON body.
@@ -103,17 +104,21 @@ def post_with_retry(
         retry: Retry policy (default: 3 retries, 1-30s exponential backoff)
         data: Form-encoded body
         params: Query-string parameters
-        timeout: Per-request timeout in seconds
+        http: Transport options (session, timeout, TLS, proxies); defaults to
+            a fresh Session with a 30s timeout
 
     Raises:
         OperationalError: On non-retriable failure or when retries are exhausted;
             the message includes the server's error/error_description when present.
     """
     retry = retry or DEFAULT_RETRY
+    http = http or HttpOptions()
     attempt = 0
     while True:
         try:
-            response = requests.post(url, data=data, params=params, timeout=timeout)
+            response = http.session.post(
+                url, data=data, params=params, timeout=http.timeout
+            )
         except requests.exceptions.RequestException as e:
             if attempt < retry.max_retries:
                 attempt += 1
