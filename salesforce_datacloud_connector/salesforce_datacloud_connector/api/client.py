@@ -22,6 +22,7 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 import requests
 
 from ..exceptions import OperationalError, ProgrammingError, map_http_error_to_exception
+from ..http_options import HttpOptions
 from ..types import infer_sql_parameter_type
 from .models import QueryResponse, QueryStatus
 
@@ -60,6 +61,7 @@ class DataCloudQueryClient:
         query_settings: Optional[Dict[str, str]] = None,
         output_format: str = "arrow",
         on_unauthorized: Optional[Callable[[], None]] = None,
+        http: Optional[HttpOptions] = None,
     ):
         """
         Initialize the API client for off-core Query v3.
@@ -82,6 +84,7 @@ class DataCloudQueryClient:
                 before the request is retried once with a fresh token from
                 auth_token_getter (typically the token provider's
                 invalidate_token). Without it, a 401 is raised immediately.
+            http: Transport options (session, timeout, TLS verification, proxies)
 
         Raises:
             ValueError: If output_format is not "arrow" or "json"
@@ -94,6 +97,7 @@ class DataCloudQueryClient:
         self.tenant_endpoint = tenant_endpoint.rstrip("/")
         self.auth_token_getter = auth_token_getter
         self._on_unauthorized = on_unauthorized
+        self._http = http or HttpOptions()
         self.dataspace = dataspace or "default"
         self.workload = workload
         self.user_agent = user_agent
@@ -178,13 +182,13 @@ class DataCloudQueryClient:
             Exception: If request fails after all retries
         """
         try:
-            response = requests.request(
+            response = self._http.session.request(
                 method=method,
                 url=url,
                 headers=self._get_headers(accept=accept or _JSON_MEDIA_TYPE),
                 params=params,
                 json=json_data,
-                timeout=30,
+                timeout=self._http.timeout,
             )
             # Check for errors
             if not response.ok:

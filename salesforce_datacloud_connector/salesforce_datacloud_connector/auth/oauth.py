@@ -17,12 +17,15 @@ import os
 import subprocess
 import time
 from abc import ABC, abstractmethod
-from typing import Optional
+from typing import Optional, Union
+from urllib.parse import urlparse
 
 import jwt
-import requests
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric import rsa
 
 from ..exceptions import OperationalError
+from ..http_options import HttpOptions
 from ._http import RetryConfig, post_with_retry
 
 
@@ -38,6 +41,7 @@ class OAuthAuthenticator(ABC):
         self,
         login_url: str = "https://login.salesforce.com",
         retry: Optional[RetryConfig] = None,
+        http: Optional[HttpOptions] = None,
     ):
         """
         Initialize the authenticator.
@@ -47,9 +51,11 @@ class OAuthAuthenticator(ABC):
                       "https://test.salesforce.com" for sandboxes)
             retry: Retry policy for transient (5xx/429/network) failures of the
                    token endpoint. Defaults to 3 retries with 1-30s backoff.
+            http: Transport options (session, timeout, TLS verification, proxies)
         """
         self.login_url = login_url.rstrip("/")
         self.retry = retry
+        self.http = http or HttpOptions()
         self._instance_url: Optional[str] = None
 
     def _request_token(
@@ -57,7 +63,11 @@ class OAuthAuthenticator(ABC):
     ) -> tuple[str, int, str]:
         """POST a grant to the OAuth token endpoint and validate the response."""
         token_data = post_with_retry(
-            token_url, description=description, retry=self.retry, data=data
+            token_url,
+            description=description,
+            retry=self.retry,
+            data=data,
+            http=self.http,
         )
 
         access_token = token_data.get("access_token")
@@ -142,6 +152,7 @@ class UsernamePasswordAuthenticator(OAuthAuthenticator):
         client_id: str = None,
         client_secret: str = None,
         retry: Optional[RetryConfig] = None,
+        http: Optional[HttpOptions] = None,
     ):
         """
         Initialize username/password authenticator.
@@ -152,8 +163,10 @@ class UsernamePasswordAuthenticator(OAuthAuthenticator):
             password: Salesforce password
             client_id: Connected app client ID
             client_secret: Connected app client secret
+            retry: Retry policy for transient token-endpoint failures
+            http: Transport options (session, timeout, TLS verification, proxies)
         """
-        super().__init__(login_url, retry)
+        super().__init__(login_url, retry, http)
         self.username = username
         self.password = password
         self.client_id = client_id
@@ -176,6 +189,41 @@ class UsernamePasswordAuthenticator(OAuthAuthenticator):
         )
 
 
+def _load_rsa_private_key(key: Union[str, bytes, os.PathLike, None]):
+    """
+    Load an RSA private key from PEM text/bytes or a PEM file path.
+
+    Raises:
+        ValueError: If the key is missing, unreadable, not PEM, or not RSA.
+    """
+    if not key:
+        raise ValueError("jwt_private_key is required")
+
+    is_inline_pem = (
+        isinstance(key, str) and key.lstrip().startswith("-----BEGIN")
+    ) or (isinstance(key, bytes) and key.lstrip().startswith(b"-----BEGIN"))
+    if not is_inline_pem:
+        try:
+            with open(key, "rb") as f:
+                key = f.read()
+        except OSError as e:
+            raise ValueError(
+                f"jwt_private_key is neither PEM text nor a readable file path: {e}"
+            ) from e
+
+    pem = key.encode() if isinstance(key, str) else key
+    try:
+        private_key = serialization.load_pem_private_key(pem.strip(), password=None)
+    except (ValueError, TypeError) as e:
+        raise ValueError(
+            f"Failed to parse jwt_private_key as an unencrypted PEM key: {e}"
+        ) from e
+
+    if not isinstance(private_key, rsa.RSAPrivateKey):
+        raise ValueError("jwt_private_key must be an RSA private key")
+    return private_key
+
+
 class JWTAuthenticator(OAuthAuthenticator):
     """
     OAuth 2.0 JWT Bearer Token flow.
@@ -189,9 +237,10 @@ class JWTAuthenticator(OAuthAuthenticator):
         login_url: str = "https://login.salesforce.com",
         client_id: str = None,
         username: str = None,
-        jwt_private_key: str = None,
-        jwt_expiry_seconds: int = 300,
+        jwt_private_key: Union[str, bytes, os.PathLike] = None,
+        jwt_expiry_seconds: int = 120,
         retry: Optional[RetryConfig] = None,
+        http: Optional[HttpOptions] = None,
     ):
         """
         Initialize JWT authenticator.
@@ -200,14 +249,22 @@ class JWTAuthenticator(OAuthAuthenticator):
             login_url: Salesforce login URL (default: "https://login.salesforce.com")
             client_id: Connected app client ID
             username: Salesforce username
-            jwt_private_key: Private key in PEM format (RSA)
-            jwt_expiry_seconds: JWT expiration time in seconds (default: 5 minutes)
+            jwt_private_key: RSA private key: PEM text or bytes, or a path to a
+                             PEM file. Validated immediately.
+            jwt_expiry_seconds: JWT expiration time in seconds (default: 2 minutes)
+            retry: Retry policy for transient token-endpoint failures
+            http: Transport options (session, timeout, TLS verification, proxies)
         """
-        super().__init__(login_url, retry)
+        super().__init__(login_url, retry, http)
         self.client_id = client_id
         self.username = username
-        self.jwt_private_key = jwt_private_key
+        self.jwt_private_key = _load_rsa_private_key(jwt_private_key)
         self.jwt_expiry_seconds = jwt_expiry_seconds
+
+    def _audience(self) -> str:
+        """Scheme and host of the login URL, without any path (as JDBC does)."""
+        parsed = urlparse(self.login_url)
+        return f"{parsed.scheme}://{parsed.netloc}"
 
     def _create_jwt(self) -> str:
         """
@@ -221,7 +278,8 @@ class JWTAuthenticator(OAuthAuthenticator):
         payload = {
             "iss": self.client_id,  # Issuer (client ID)
             "sub": self.username,  # Subject (username)
-            "aud": self.login_url,  # Audience (Salesforce login URL)
+            "aud": self._audience(),  # Audience (scheme + host of the login URL)
+            "iat": current_time,  # Issued at
             "exp": current_time + self.jwt_expiry_seconds,  # Expiration
         }
 
@@ -263,6 +321,7 @@ class RefreshTokenAuthenticator(OAuthAuthenticator):
         client_secret: str = None,
         refresh_token: str = None,
         retry: Optional[RetryConfig] = None,
+        http: Optional[HttpOptions] = None,
     ):
         """
         Initialize refresh token authenticator.
@@ -272,8 +331,10 @@ class RefreshTokenAuthenticator(OAuthAuthenticator):
             client_id: Connected app client ID
             client_secret: Connected app client secret
             refresh_token: OAuth refresh token
+            retry: Retry policy for transient token-endpoint failures
+            http: Transport options (session, timeout, TLS verification, proxies)
         """
-        super().__init__(login_url, retry)
+        super().__init__(login_url, retry, http)
         self.client_id = client_id
         self.client_secret = client_secret
         self.refresh_token = refresh_token
@@ -309,6 +370,7 @@ class ClientCredentialsAuthenticator(OAuthAuthenticator):
         client_id: str = None,
         client_secret: str = None,
         retry: Optional[RetryConfig] = None,
+        http: Optional[HttpOptions] = None,
     ):
         """
         Initialize client credentials authenticator.
@@ -317,8 +379,10 @@ class ClientCredentialsAuthenticator(OAuthAuthenticator):
             login_url: Salesforce login URL (default: "https://login.salesforce.com")
             client_id: Connected app client ID
             client_secret: Connected app client secret
+            retry: Retry policy for transient token-endpoint failures
+            http: Transport options (session, timeout, TLS verification, proxies)
         """
-        super().__init__(login_url, retry)
+        super().__init__(login_url, retry, http)
         self.client_id = client_id
         self.client_secret = client_secret
 

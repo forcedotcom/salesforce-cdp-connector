@@ -13,6 +13,7 @@ import pytest
 import responses
 
 import salesforce_datacloud_connector as sfdc
+from tests._keys import TEST_RSA_PRIVATE_KEY_PEM
 from salesforce_datacloud_connector.exceptions import NotSupportedError, ProgrammingError
 
 from ._arrow_fixtures import build_arrow_ipc_bytes
@@ -688,7 +689,7 @@ def test_jwt_authentication():
                 auth_type="jwt",
                 username="test@example.com",
                 client_id="client_id",
-                jwt_private_key="-----BEGIN RSA PRIVATE KEY-----\ntest\n-----END RSA PRIVATE KEY-----",
+                jwt_private_key=TEST_RSA_PRIVATE_KEY_PEM,
                 output_format="json",
             )
 

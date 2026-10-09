@@ -12,6 +12,7 @@ import time
 from typing import Optional
 
 from ..exceptions import OperationalError
+from ..http_options import HttpOptions
 from ._http import RetryConfig, post_with_retry
 from .oauth import OAuthAuthenticator
 
@@ -39,6 +40,7 @@ class DataCloudTokenExchanger:
         core_authenticator: OAuthAuthenticator,
         dataspace: Optional[str] = None,
         retry: Optional[RetryConfig] = None,
+        http: Optional[HttpOptions] = None,
     ):
         """
         Initialize the CDP token exchanger.
@@ -48,8 +50,10 @@ class DataCloudTokenExchanger:
             dataspace: Data space name to pass to the exchange endpoint (optional)
             retry: Retry policy for transient (5xx/429/network) exchange failures.
                    Defaults to 3 retries with 1-30s backoff.
+            http: Transport options (session, timeout, TLS verification, proxies)
         """
         self._retry = retry
+        self._http = http or HttpOptions()
         self._core_authenticator = core_authenticator
         self._dataspace = dataspace
         self._cached_cdp_token: Optional[str] = None
@@ -168,6 +172,7 @@ class DataCloudTokenExchanger:
             description="CDP token exchange failed",
             retry=self._retry,
             params=params,
+            http=self._http,
         )
         access_token = token_data.get("access_token")
         expires_in = token_data.get("expires_in")
