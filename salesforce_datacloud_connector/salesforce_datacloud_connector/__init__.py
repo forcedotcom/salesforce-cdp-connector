@@ -69,6 +69,7 @@ from .auth.oauth import (
 
 # Import token exchanger
 from .auth._http import RetryConfig
+from .auth.direct_token import DirectCdpTokenProvider
 from .auth.token_exchanger import DataCloudTokenExchanger
 
 
@@ -88,6 +89,8 @@ def connect(
     query_settings: Optional[Dict[str, str]] = None,
     output_format: str = "arrow",
     auth_retry: Optional[RetryConfig] = None,
+    cdp_token: Optional[str] = None,
+    tenant_endpoint: Optional[str] = None,
 ) -> Connection:
     """
     Create a connection to Salesforce Data Cloud.
@@ -100,7 +103,7 @@ def connect(
         login_url: Salesforce login URL (default: "https://login.salesforce.com")
                   Use "https://test.salesforce.com" for sandboxes
         auth_type: Authentication type - "username_password", "jwt", "refresh_token",
-                   "client_credentials", or "sf_cli"
+                   "client_credentials", "sf_cli", or "cdp_token"
         username: Salesforce username (required for username_password and jwt)
         password: Salesforce password (required for username_password)
         client_id: Connected app client ID (required for all auth types except sf_cli)
@@ -111,6 +114,12 @@ def connect(
         workload: Optional workload name for logging/debugging
         target_org: Org alias or username for the sf_cli auth type. If omitted,
                     the Salesforce CLI's own default org is used.
+        cdp_token: Data Cloud (CDP) access token for the cdp_token auth type, a JWT
+                   with an ``exp`` claim. Skips OAuth login and token exchange;
+                   the token cannot be refreshed, so once it expires the
+                   connection fails and a new one must be created.
+        tenant_endpoint: Data Cloud tenant endpoint for the cdp_token auth type
+                   (e.g. "tenant.c360a.salesforce.com"; scheme optional).
         user_agent: Optional caller identifier appended to the driver's
                     User-Agent header (e.g. "my-app/1.0"). The header sent is
                     "salesforce-cdp-connector/{version} {user_agent}".
@@ -173,6 +182,19 @@ def connect(
             f"Invalid output_format: {output_format!r}. Must be 'arrow' or 'json'"
         )
 
+    # A pre-minted CDP token needs no authenticator or token exchange.
+    if auth_type == "cdp_token":
+        if not all([cdp_token, tenant_endpoint]):
+            raise ValueError("cdp_token auth requires: cdp_token, tenant_endpoint")
+        return Connection(
+            DirectCdpTokenProvider(cdp_token, tenant_endpoint),
+            dataspace=dataspace,
+            workload=workload,
+            user_agent=user_agent,
+            query_settings=query_settings,
+            output_format=output_format,
+        )
+
     # Validate and create authenticator based on auth_type
     if auth_type == "username_password":
         if not all([username, password, client_id, client_secret]):
@@ -230,7 +252,7 @@ def connect(
     else:
         raise ValueError(
             f"Invalid auth_type: {auth_type}. "
-            f"Must be 'username_password', 'jwt', 'refresh_token', 'client_credentials', or 'sf_cli'"
+            f"Must be 'username_password', 'jwt', 'refresh_token', 'client_credentials', 'sf_cli', or 'cdp_token'"
         )
 
     # Wrap authenticator in token exchanger for CDP token + tenant endpoint
@@ -289,6 +311,7 @@ __all__ = [
     "ClientCredentialsAuthenticator",
     "SfCliAuthenticator",
     "DataCloudTokenExchanger",
+    "DirectCdpTokenProvider",
     "RetryConfig",
 ]
 
