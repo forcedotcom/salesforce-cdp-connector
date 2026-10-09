@@ -235,18 +235,6 @@ it is malformed or already expired. **It cannot be refreshed**: once it
 expires, queries fail with an error and you must create a new connection with
 a fresh token.
 
-### Error handling and retries
-
-OAuth login and the Data Cloud token exchange retry transient failures (HTTP
-5xx/429 and connection errors) up to 3 times with exponential backoff from 1s
-to 30s, matching the JDBC driver. Credential errors (400/401/403) fail
-immediately and include the server's `error: error_description`. These
-retries apply to the auth calls only; query execution has its own retry
-handling. A 401 from the query API triggers one token refresh and retry.
-
-`jwt_private_key` accepts PEM text, PEM bytes, or a path to a PEM file, and is
-validated before any network call. `client_secret` is rejected for `jwt` auth.
-
 ### Username/Password (deprecated)
 
 Username/password authentication is **deprecated** and will be removed in a
