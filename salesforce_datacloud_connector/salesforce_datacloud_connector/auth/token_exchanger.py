@@ -11,9 +11,8 @@ import threading
 import time
 from typing import Optional
 
-import requests
-
 from ..exceptions import OperationalError
+from ._http import RetryConfig, post_with_retry
 from .oauth import OAuthAuthenticator
 
 
@@ -39,6 +38,7 @@ class DataCloudTokenExchanger:
         self,
         core_authenticator: OAuthAuthenticator,
         dataspace: Optional[str] = None,
+        retry: Optional[RetryConfig] = None,
     ):
         """
         Initialize the CDP token exchanger.
@@ -46,7 +46,10 @@ class DataCloudTokenExchanger:
         Args:
             core_authenticator: An OAuthAuthenticator instance that provides core tokens
             dataspace: Data space name to pass to the exchange endpoint (optional)
+            retry: Retry policy for transient (5xx/429/network) exchange failures.
+                   Defaults to 3 retries with 1-30s backoff.
         """
+        self._retry = retry
         self._core_authenticator = core_authenticator
         self._dataspace = dataspace
         self._cached_cdp_token: Optional[str] = None
@@ -160,33 +163,32 @@ class DataCloudTokenExchanger:
         if self._dataspace:
             params["dataspace"] = self._dataspace
 
-        try:
-            response = requests.post(exchange_url, params=params, timeout=30)
-            response.raise_for_status()
-            token_data = response.json()
+        token_data = post_with_retry(
+            exchange_url,
+            description="CDP token exchange failed",
+            retry=self._retry,
+            params=params,
+        )
+        access_token = token_data.get("access_token")
+        expires_in = token_data.get("expires_in")
+        tenant_endpoint = token_data.get("instance_url")
 
-            access_token = token_data.get("access_token")
-            expires_in = token_data.get("expires_in")
-            tenant_endpoint = token_data.get("instance_url")
+        if not access_token:
+            raise OperationalError("No access_token in CDP token exchange response")
 
-            if not access_token:
-                raise OperationalError("No access_token in CDP token exchange response")
+        if not expires_in:
+            raise OperationalError("No expires_in in CDP token exchange response")
 
-            if not expires_in:
-                raise OperationalError("No expires_in in CDP token exchange response")
+        if not tenant_endpoint:
+            raise OperationalError("No instance_url in CDP token exchange response")
 
-            if not tenant_endpoint:
-                raise OperationalError("No instance_url in CDP token exchange response")
+        # The a360 exchange returns the tenant endpoint as a bare host
+        # (no scheme). On-core v1 prepends https:// at request time; we
+        # normalize once here so the off-core client can build valid URLs.
+        tenant_endpoint = self._normalize_endpoint(tenant_endpoint)
 
-            # The a360 exchange returns the tenant endpoint as a bare host
-            # (no scheme). On-core v1 prepends https:// at request time; we
-            # normalize once here so the off-core client can build valid URLs.
-            tenant_endpoint = self._normalize_endpoint(tenant_endpoint)
+        return access_token, expires_in, tenant_endpoint
 
-            return access_token, expires_in, tenant_endpoint
-
-        except requests.exceptions.RequestException as e:
-            raise OperationalError(f"CDP token exchange failed: {e}") from e
 
     @staticmethod
     def _normalize_endpoint(endpoint: str) -> str:

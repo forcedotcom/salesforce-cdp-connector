@@ -17,7 +17,7 @@ spec and always requests JSON.
 import json
 import re
 import time
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import requests
 
@@ -59,6 +59,7 @@ class DataCloudQueryClient:
         user_agent: Optional[str] = None,
         query_settings: Optional[Dict[str, str]] = None,
         output_format: str = "arrow",
+        on_unauthorized: Optional[Callable[[], None]] = None,
     ):
         """
         Initialize the API client for off-core Query v3.
@@ -77,6 +78,10 @@ class DataCloudQueryClient:
                 header used for execute_query/fetch_results. get_query_status
                 always requests JSON regardless of this setting, since v3 has
                 no Arrow variant for the status-only endpoint.
+            on_unauthorized: Optional callback invoked when the API answers 401,
+                before the request is retried once with a fresh token from
+                auth_token_getter (typically the token provider's
+                invalidate_token). Without it, a 401 is raised immediately.
 
         Raises:
             ValueError: If output_format is not "arrow" or "json"
@@ -88,6 +93,7 @@ class DataCloudQueryClient:
 
         self.tenant_endpoint = tenant_endpoint.rstrip("/")
         self.auth_token_getter = auth_token_getter
+        self._on_unauthorized = on_unauthorized
         self.dataspace = dataspace or "default"
         self.workload = workload
         self.user_agent = user_agent
@@ -150,6 +156,7 @@ class DataCloudQueryClient:
         json_data: Optional[Dict[str, Any]] = None,
         retry_count: int = 0,
         accept: Optional[str] = None,
+        auth_refreshed: bool = False,
     ) -> requests.Response:
         """
         Make an HTTP request with retry logic.
@@ -181,6 +188,24 @@ class DataCloudQueryClient:
             )
             # Check for errors
             if not response.ok:
+                # An expired/revoked token: drop the cached one and retry once
+                # with a freshly exchanged token.
+                if (
+                    response.status_code == 401
+                    and self._on_unauthorized is not None
+                    and not auth_refreshed
+                ):
+                    self._on_unauthorized()
+                    return self._make_request(
+                        method,
+                        url,
+                        params,
+                        json_data,
+                        retry_count,
+                        accept,
+                        auth_refreshed=True,
+                    )
+
                 # Don't retry client errors (4xx except 429)
                 if 400 <= response.status_code < 500 and response.status_code != 429:
                     self._raise_api_error(response)
@@ -190,7 +215,13 @@ class DataCloudQueryClient:
                     time.sleep(self.RETRY_WAIT_SECONDS)
 
                     return self._make_request(
-                        method, url, params, json_data, retry_count + 1, accept
+                        method,
+                        url,
+                        params,
+                        json_data,
+                        retry_count + 1,
+                        accept,
+                        auth_refreshed,
                     )
 
                 # All retries exhausted
@@ -203,7 +234,13 @@ class DataCloudQueryClient:
             if retry_count < self.MAX_RETRIES:
                 time.sleep(self.RETRY_WAIT_SECONDS)
                 return self._make_request(
-                    method, url, params, json_data, retry_count + 1, accept
+                    method,
+                    url,
+                    params,
+                    json_data,
+                    retry_count + 1,
+                    accept,
+                    auth_refreshed,
                 )
             raise OperationalError(f"Request failed: {e}") from e
 

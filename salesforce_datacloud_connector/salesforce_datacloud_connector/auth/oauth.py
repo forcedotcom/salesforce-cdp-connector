@@ -23,6 +23,7 @@ import jwt
 import requests
 
 from ..exceptions import OperationalError
+from ._http import RetryConfig, post_with_retry
 
 
 class OAuthAuthenticator(ABC):
@@ -33,16 +34,44 @@ class OAuthAuthenticator(ABC):
     always fetches a fresh token — no core-token caching (matches JDBC).
     """
 
-    def __init__(self, login_url: str = "https://login.salesforce.com"):
+    def __init__(
+        self,
+        login_url: str = "https://login.salesforce.com",
+        retry: Optional[RetryConfig] = None,
+    ):
         """
         Initialize the authenticator.
 
         Args:
             login_url: Salesforce login URL (e.g., "https://login.salesforce.com" or
                       "https://test.salesforce.com" for sandboxes)
+            retry: Retry policy for transient (5xx/429/network) failures of the
+                   token endpoint. Defaults to 3 retries with 1-30s backoff.
         """
         self.login_url = login_url.rstrip("/")
+        self.retry = retry
         self._instance_url: Optional[str] = None
+
+    def _request_token(
+        self, token_url: str, data: dict, description: str
+    ) -> tuple[str, int, str]:
+        """POST a grant to the OAuth token endpoint and validate the response."""
+        token_data = post_with_retry(
+            token_url, description=description, retry=self.retry, data=data
+        )
+
+        access_token = token_data.get("access_token")
+        # Salesforce typically returns tokens valid for 2 hours (7200s)
+        expires_in = token_data.get("expires_in", 7200)
+        instance_url = token_data.get("instance_url")
+
+        if not access_token:
+            raise OperationalError("No access token in response")
+
+        if not instance_url:
+            raise OperationalError("No instance_url in response")
+
+        return access_token, expires_in, instance_url
 
     @abstractmethod
     def _fetch_new_token(self) -> tuple[str, int, str]:
@@ -112,6 +141,7 @@ class UsernamePasswordAuthenticator(OAuthAuthenticator):
         password: str = None,
         client_id: str = None,
         client_secret: str = None,
+        retry: Optional[RetryConfig] = None,
     ):
         """
         Initialize username/password authenticator.
@@ -123,7 +153,7 @@ class UsernamePasswordAuthenticator(OAuthAuthenticator):
             client_id: Connected app client ID
             client_secret: Connected app client secret
         """
-        super().__init__(login_url)
+        super().__init__(login_url, retry)
         self.username = username
         self.password = password
         self.client_id = client_id
@@ -141,29 +171,9 @@ class UsernamePasswordAuthenticator(OAuthAuthenticator):
             "password": self.password,
         }
 
-        try:
-            response = requests.post(token_url, data=data, timeout=30)
-            response.raise_for_status()
-            token_data = response.json()
-
-            access_token = token_data.get("access_token")
-            # Salesforce typically returns tokens valid for 2 hours (7200s)
-            # If not specified, default to 2 hours
-            expires_in = token_data.get("expires_in", 7200)
-            instance_url = token_data.get("instance_url")
-
-            if not access_token:
-                raise OperationalError("No access token in response")
-
-            if not instance_url:
-                raise OperationalError("No instance_url in response")
-
-            return access_token, expires_in, instance_url
-
-        except requests.exceptions.RequestException as e:
-            raise OperationalError(
-                f"Authentication failed with username/password: {e}"
-            ) from e
+        return self._request_token(
+            token_url, data, "Authentication failed with username/password"
+        )
 
 
 class JWTAuthenticator(OAuthAuthenticator):
@@ -181,6 +191,7 @@ class JWTAuthenticator(OAuthAuthenticator):
         username: str = None,
         jwt_private_key: str = None,
         jwt_expiry_seconds: int = 300,
+        retry: Optional[RetryConfig] = None,
     ):
         """
         Initialize JWT authenticator.
@@ -192,7 +203,7 @@ class JWTAuthenticator(OAuthAuthenticator):
             jwt_private_key: Private key in PEM format (RSA)
             jwt_expiry_seconds: JWT expiration time in seconds (default: 5 minutes)
         """
-        super().__init__(login_url)
+        super().__init__(login_url, retry)
         self.client_id = client_id
         self.username = username
         self.jwt_private_key = jwt_private_key
@@ -231,25 +242,9 @@ class JWTAuthenticator(OAuthAuthenticator):
             "assertion": jwt_token,
         }
 
-        try:
-            response = requests.post(token_url, data=data, timeout=30)
-            response.raise_for_status()
-            token_data = response.json()
-
-            access_token = token_data.get("access_token")
-            expires_in = token_data.get("expires_in", 7200)
-            instance_url = token_data.get("instance_url")
-
-            if not access_token:
-                raise OperationalError("No access token in response")
-
-            if not instance_url:
-                raise OperationalError("No instance_url in response")
-
-            return access_token, expires_in, instance_url
-
-        except requests.exceptions.RequestException as e:
-            raise OperationalError(f"Authentication failed with JWT: {e}") from e
+        return self._request_token(
+            token_url, data, "Authentication failed with JWT"
+        )
 
 
 class RefreshTokenAuthenticator(OAuthAuthenticator):
@@ -267,6 +262,7 @@ class RefreshTokenAuthenticator(OAuthAuthenticator):
         client_id: str = None,
         client_secret: str = None,
         refresh_token: str = None,
+        retry: Optional[RetryConfig] = None,
     ):
         """
         Initialize refresh token authenticator.
@@ -277,7 +273,7 @@ class RefreshTokenAuthenticator(OAuthAuthenticator):
             client_secret: Connected app client secret
             refresh_token: OAuth refresh token
         """
-        super().__init__(login_url)
+        super().__init__(login_url, retry)
         self.client_id = client_id
         self.client_secret = client_secret
         self.refresh_token = refresh_token
@@ -293,27 +289,9 @@ class RefreshTokenAuthenticator(OAuthAuthenticator):
             "refresh_token": self.refresh_token,
         }
 
-        try:
-            response = requests.post(token_url, data=data, timeout=30)
-            response.raise_for_status()
-            token_data = response.json()
-
-            access_token = token_data.get("access_token")
-            expires_in = token_data.get("expires_in", 7200)
-            instance_url = token_data.get("instance_url")
-
-            if not access_token:
-                raise OperationalError("No access token in response")
-
-            if not instance_url:
-                raise OperationalError("No instance_url in response")
-
-            return access_token, expires_in, instance_url
-
-        except requests.exceptions.RequestException as e:
-            raise OperationalError(
-                f"Authentication failed with refresh token: {e}"
-            ) from e
+        return self._request_token(
+            token_url, data, "Authentication failed with refresh token"
+        )
 
 
 class ClientCredentialsAuthenticator(OAuthAuthenticator):
@@ -330,6 +308,7 @@ class ClientCredentialsAuthenticator(OAuthAuthenticator):
         login_url: str = "https://login.salesforce.com",
         client_id: str = None,
         client_secret: str = None,
+        retry: Optional[RetryConfig] = None,
     ):
         """
         Initialize client credentials authenticator.
@@ -339,7 +318,7 @@ class ClientCredentialsAuthenticator(OAuthAuthenticator):
             client_id: Connected app client ID
             client_secret: Connected app client secret
         """
-        super().__init__(login_url)
+        super().__init__(login_url, retry)
         self.client_id = client_id
         self.client_secret = client_secret
 
@@ -353,27 +332,9 @@ class ClientCredentialsAuthenticator(OAuthAuthenticator):
             "client_secret": self.client_secret,
         }
 
-        try:
-            response = requests.post(token_url, data=data, timeout=30)
-            response.raise_for_status()
-            token_data = response.json()
-
-            access_token = token_data.get("access_token")
-            expires_in = token_data.get("expires_in", 7200)
-            instance_url = token_data.get("instance_url")
-
-            if not access_token:
-                raise OperationalError("No access token in response")
-
-            if not instance_url:
-                raise OperationalError("No instance_url in response")
-
-            return access_token, expires_in, instance_url
-
-        except requests.exceptions.RequestException as e:
-            raise OperationalError(
-                f"Authentication failed with client credentials: {e}"
-            ) from e
+        return self._request_token(
+            token_url, data, "Authentication failed with client credentials"
+        )
 
 
 class SfCliAuthenticator(OAuthAuthenticator):

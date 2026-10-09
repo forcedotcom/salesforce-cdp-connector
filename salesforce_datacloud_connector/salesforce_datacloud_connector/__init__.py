@@ -68,6 +68,7 @@ from .auth.oauth import (
 )
 
 # Import token exchanger
+from .auth._http import RetryConfig
 from .auth.token_exchanger import DataCloudTokenExchanger
 
 
@@ -86,6 +87,7 @@ def connect(
     user_agent: Optional[str] = None,
     query_settings: Optional[Dict[str, str]] = None,
     output_format: str = "arrow",
+    auth_retry: Optional[RetryConfig] = None,
 ) -> Connection:
     """
     Create a connection to Salesforce Data Cloud.
@@ -119,6 +121,11 @@ def connect(
             wire format negotiated with off-core Query v3. Arrow is the
             recommended default; "json" remains available as an opt-in
             fallback.
+        auth_retry: Retry policy for transient (5xx/429/network) failures of the
+            OAuth and CDP token-exchange endpoints, as a RetryConfig
+            (default: 3 retries, exponential backoff from 1s up to 30s).
+            Use RetryConfig(max_retries=0) to disable. Credential errors
+            (400/401/403) are never retried.
 
     Returns:
         Connection instance
@@ -178,6 +185,7 @@ def connect(
             password=password,
             client_id=client_id,
             client_secret=client_secret,
+            retry=auth_retry,
         )
 
     elif auth_type == "jwt":
@@ -188,6 +196,7 @@ def connect(
             client_id=client_id,
             username=username,
             jwt_private_key=jwt_private_key,
+            retry=auth_retry,
         )
 
     elif auth_type == "refresh_token":
@@ -200,6 +209,7 @@ def connect(
             client_id=client_id,
             client_secret=client_secret,
             refresh_token=refresh_token,
+            retry=auth_retry,
         )
 
     elif auth_type == "client_credentials":
@@ -211,6 +221,7 @@ def connect(
             login_url=login_url,
             client_id=client_id,
             client_secret=client_secret,
+            retry=auth_retry,
         )
 
     elif auth_type == "sf_cli":
@@ -226,6 +237,7 @@ def connect(
     exchanger = DataCloudTokenExchanger(
         core_authenticator=authenticator,
         dataspace=dataspace,
+        retry=auth_retry,
     )
 
     # Create and return connection with exchanger
@@ -277,6 +289,7 @@ __all__ = [
     "ClientCredentialsAuthenticator",
     "SfCliAuthenticator",
     "DataCloudTokenExchanger",
+    "RetryConfig",
 ]
 
 # Package metadata
