@@ -1,0 +1,17 @@
+{
+  "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+  "packages": {
+    "salesforce_datacloud_connector": {
+      "release-type": "python",
+      "release-as": "2.0.0",
+      "package-name": "salesforce-datacloud-connector",
+      "component": "salesforce-datacloud-connector",
+      "include-component-in-tag": true,
+      "include-v-in-tag": false,
+      "changelog-path": "CHANGELOG.md",
+      "extra-files": [
+        "salesforce_datacloud_connector/__init__.py"
+      ]
+    }
+  }
+}
