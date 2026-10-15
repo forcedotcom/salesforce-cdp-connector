@@ -53,9 +53,7 @@ def test_malformed_token_rejected(token, message):
 
 
 def test_token_expiring_later_cannot_be_refreshed(monkeypatch):
-    provider = DirectCdpTokenProvider(
-        make_jwt({"exp": time.time() + 5}), "t.example.com"
-    )
+    provider = DirectCdpTokenProvider(make_jwt({"exp": time.time() + 5}), "t.example.com")
     real_time = time.time
     monkeypatch.setattr(time, "time", lambda: real_time() + 60)
     with pytest.raises(OperationalError, match="cannot be refreshed"):

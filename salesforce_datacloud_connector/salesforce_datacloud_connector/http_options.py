@@ -44,8 +44,7 @@ class HttpOptions:
             raise ValueError("timeout must be > 0")
         if session is not None and (verify is not None or proxies is not None):
             raise ValueError(
-                "Pass either session or verify/proxies, not both; "
-                "configure verify/proxies on your own session"
+                "Pass either session or verify/proxies, not both; configure verify/proxies on your own session"
             )
 
         self.timeout = timeout

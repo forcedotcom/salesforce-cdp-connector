@@ -27,9 +27,7 @@ def _jwt_auth(**kwargs):
 
 
 def _decode(token, audience):
-    return jwt.decode(
-        token, TEST_RSA_PUBLIC_KEY, algorithms=["RS256"], audience=audience
-    )
+    return jwt.decode(token, TEST_RSA_PUBLIC_KEY, algorithms=["RS256"], audience=audience)
 
 
 # --- JWT claims ------------------------------------------------------------
@@ -52,9 +50,7 @@ def test_jwt_audience_is_scheme_and_host_only():
 
 
 def test_jwt_expiry_is_configurable():
-    claims = _decode(
-        _jwt_auth(jwt_expiry_seconds=60)._create_jwt(), "https://login.salesforce.com"
-    )
+    claims = _decode(_jwt_auth(jwt_expiry_seconds=60)._create_jwt(), "https://login.salesforce.com")
     assert claims["exp"] - claims["iat"] == 60
 
 
@@ -158,9 +154,7 @@ def test_connect_rejects_client_secret_with_jwt():
 
 
 def test_http_options_builds_session_from_verify_and_proxies():
-    http = HttpOptions(
-        timeout=5, verify="/etc/ca.pem", proxies={"https": "http://proxy:3128"}
-    )
+    http = HttpOptions(timeout=5, verify="/etc/ca.pem", proxies={"https": "http://proxy:3128"})
     assert http.timeout == 5
     assert http.session.verify == "/etc/ca.pem"
     assert http.session.proxies["https"] == "http://proxy:3128"
@@ -192,9 +186,7 @@ def test_connect_shares_one_http_session_across_auth_and_query():
         },
     )
 
-    conn = sdc.connect(
-        auth_type="client_credentials", client_id="cid", client_secret="s"
-    )
+    conn = sdc.connect(auth_type="client_credentials", client_id="cid", client_secret="s")
 
     exchanger = conn._token_provider
     http = conn._client._http

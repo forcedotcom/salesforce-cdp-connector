@@ -212,8 +212,7 @@ def connect(
             raise ValueError("jwt auth requires: username, client_id, jwt_private_key")
         if client_secret:
             raise ValueError(
-                "client_secret is not allowed for jwt auth: the JWT bearer flow "
-                "does not use a client secret"
+                "client_secret is not allowed for jwt auth: the JWT bearer flow does not use a client secret"
             )
         authenticator = JWTAuthenticator(
             login_url=login_url,

@@ -188,7 +188,6 @@ class DataCloudTokenExchanger:
 
         return access_token, expires_in, tenant_endpoint
 
-
     @staticmethod
     def _normalize_endpoint(endpoint: str) -> str:
         """

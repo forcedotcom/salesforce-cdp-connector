@@ -58,9 +58,7 @@ class OAuthAuthenticator(ABC):
         self.http = http or HttpOptions()
         self._instance_url: Optional[str] = None
 
-    def _request_token(
-        self, token_url: str, data: dict, description: str
-    ) -> tuple[str, int, str]:
+    def _request_token(self, token_url: str, data: dict, description: str) -> tuple[str, int, str]:
         """POST a grant to the OAuth token endpoint and validate the response."""
         token_data = post_with_retry(
             token_url,
@@ -184,9 +182,7 @@ class UsernamePasswordAuthenticator(OAuthAuthenticator):
             "password": self.password,
         }
 
-        return self._request_token(
-            token_url, data, "Authentication failed with username/password"
-        )
+        return self._request_token(token_url, data, "Authentication failed with username/password")
 
 
 def _load_rsa_private_key(key: Union[str, bytes, os.PathLike, None]):
@@ -225,8 +221,7 @@ def _load_rsa_private_key(key: Union[str, bytes, os.PathLike, None]):
         private_key = serialization.load_pem_private_key(pem.strip(), password=None)
     except (ValueError, TypeError):
         raise ValueError(
-            "jwt_private_key is not a valid unencrypted PEM private key "
-            "or an existing file path"
+            "jwt_private_key is not a valid unencrypted PEM private key or an existing file path"
         ) from None
 
     if not isinstance(private_key, rsa.RSAPrivateKey):
@@ -310,9 +305,7 @@ class JWTAuthenticator(OAuthAuthenticator):
             "assertion": jwt_token,
         }
 
-        return self._request_token(
-            token_url, data, "Authentication failed with JWT"
-        )
+        return self._request_token(token_url, data, "Authentication failed with JWT")
 
 
 class RefreshTokenAuthenticator(OAuthAuthenticator):
@@ -360,9 +353,7 @@ class RefreshTokenAuthenticator(OAuthAuthenticator):
             "refresh_token": self.refresh_token,
         }
 
-        return self._request_token(
-            token_url, data, "Authentication failed with refresh token"
-        )
+        return self._request_token(token_url, data, "Authentication failed with refresh token")
 
 
 class ClientCredentialsAuthenticator(OAuthAuthenticator):
@@ -406,9 +397,7 @@ class ClientCredentialsAuthenticator(OAuthAuthenticator):
             "client_secret": self.client_secret,
         }
 
-        return self._request_token(
-            token_url, data, "Authentication failed with client credentials"
-        )
+        return self._request_token(token_url, data, "Authentication failed with client credentials")
 
 
 class SfCliAuthenticator(OAuthAuthenticator):

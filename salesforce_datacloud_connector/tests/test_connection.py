@@ -258,18 +258,23 @@ def test_connect_wires_token_exchanger():
     from salesforce_datacloud_connector.auth.oauth import JWTAuthenticator
 
     # Mock the JWT authenticator's token fetch and the exchange.
-    with patch.object(JWTAuthenticator, '_fetch_new_token', return_value=("core_token", 7200, "https://test.salesforce.com")), \
-         patch.object(DataCloudTokenExchanger, '_exchange_token', return_value=("cdp_token", 7200, "https://tenant.c360a.salesforce.com")):
-            # Create connection via connect()
-            conn = sfdc.connect(
-                login_url="https://login.salesforce.com",
-                auth_type="jwt",
-                username="test@example.com",
-                client_id="test_client_id",
-                jwt_private_key=TEST_RSA_PRIVATE_KEY_PEM,
-                dataspace="test_ds",
-                workload="test_workload"
-            )
+    with patch.object(
+        JWTAuthenticator, "_fetch_new_token", return_value=("core_token", 7200, "https://test.salesforce.com")
+    ), patch.object(
+        DataCloudTokenExchanger,
+        "_exchange_token",
+        return_value=("cdp_token", 7200, "https://tenant.c360a.salesforce.com"),
+    ):
+        # Create connection via connect()
+        conn = sfdc.connect(
+            login_url="https://login.salesforce.com",
+            auth_type="jwt",
+            username="test@example.com",
+            client_id="test_client_id",
+            jwt_private_key=TEST_RSA_PRIVATE_KEY_PEM,
+            dataspace="test_ds",
+            workload="test_workload",
+        )
 
         # Verify connection is created
         assert conn is not None
@@ -361,16 +366,21 @@ def test_connect_passes_query_settings():
     from salesforce_datacloud_connector.auth.token_exchanger import DataCloudTokenExchanger
     from salesforce_datacloud_connector.auth.oauth import JWTAuthenticator
 
-    with patch.object(JWTAuthenticator, '_fetch_new_token', return_value=("core_token", 7200, "https://test.salesforce.com")), \
-         patch.object(DataCloudTokenExchanger, '_exchange_token', return_value=("cdp_token", 7200, "https://tenant.c360a.salesforce.com")):
-            conn = sfdc.connect(
-                login_url="https://login.salesforce.com",
-                auth_type="jwt",
-                username="test@example.com",
-                client_id="test_client_id",
-                jwt_private_key=TEST_RSA_PRIVATE_KEY_PEM,
-                query_settings={"time_zone": "UTC"},
-            )
+    with patch.object(
+        JWTAuthenticator, "_fetch_new_token", return_value=("core_token", 7200, "https://test.salesforce.com")
+    ), patch.object(
+        DataCloudTokenExchanger,
+        "_exchange_token",
+        return_value=("cdp_token", 7200, "https://tenant.c360a.salesforce.com"),
+    ):
+        conn = sfdc.connect(
+            login_url="https://login.salesforce.com",
+            auth_type="jwt",
+            username="test@example.com",
+            client_id="test_client_id",
+            jwt_private_key=TEST_RSA_PRIVATE_KEY_PEM,
+            query_settings={"time_zone": "UTC"},
+        )
 
         assert conn._client.default_settings == {"time_zone": "UTC"}
 

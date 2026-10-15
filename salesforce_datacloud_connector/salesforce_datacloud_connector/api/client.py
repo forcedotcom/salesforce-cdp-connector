@@ -190,11 +190,7 @@ class DataCloudQueryClient:
             if not response.ok:
                 # An expired/revoked token: drop the cached one and retry once
                 # with a freshly exchanged token.
-                if (
-                    response.status_code == 401
-                    and self._on_unauthorized is not None
-                    and not auth_refreshed
-                ):
+                if response.status_code == 401 and self._on_unauthorized is not None and not auth_refreshed:
                     self._on_unauthorized()
                     return self._make_request(
                         method,

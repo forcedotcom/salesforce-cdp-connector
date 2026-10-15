@@ -61,16 +61,13 @@ class DirectCdpTokenProvider:
         self._expiry = _jwt_expiry(cdp_token)
         if self._expiry <= time.time():
             raise OperationalError("CDP token has already expired")
-        self._tenant_endpoint = DataCloudTokenExchanger._normalize_endpoint(
-            tenant_endpoint.strip()
-        )
+        self._tenant_endpoint = DataCloudTokenExchanger._normalize_endpoint(tenant_endpoint.strip())
 
     def get_cdp_token(self) -> str:
         """Return the token, or raise if it has expired (it cannot be refreshed)."""
         if time.time() > self._expiry:
             raise OperationalError(
-                "CDP token has expired and cannot be refreshed; "
-                "create a new connection with a fresh token"
+                "CDP token has expired and cannot be refreshed; create a new connection with a fresh token"
             )
         return self._token
 

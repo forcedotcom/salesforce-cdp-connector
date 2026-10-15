@@ -34,9 +34,7 @@ def sleeps():
 
 
 def _password_auth(**kwargs):
-    return UsernamePasswordAuthenticator(
-        username="u", password="p", client_id="id", client_secret="s", **kwargs
-    )
+    return UsernamePasswordAuthenticator(username="u", password="p", client_id="id", client_secret="s", **kwargs)
 
 
 @responses.activate

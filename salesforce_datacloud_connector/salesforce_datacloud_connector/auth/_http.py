@@ -116,9 +116,7 @@ def post_with_retry(
     attempt = 0
     while True:
         try:
-            response = http.session.post(
-                url, data=data, params=params, timeout=http.timeout
-            )
+            response = http.session.post(url, data=data, params=params, timeout=http.timeout)
         except requests.exceptions.RequestException as e:
             if attempt < retry.max_retries:
                 attempt += 1
@@ -130,9 +128,7 @@ def post_with_retry(
             try:
                 return response.json()
             except ValueError as e:
-                raise OperationalError(
-                    f"{description}: response was not valid JSON"
-                ) from e
+                raise OperationalError(f"{description}: response was not valid JSON") from e
 
         if _is_retriable_status(response.status_code) and attempt < retry.max_retries:
             attempt += 1
