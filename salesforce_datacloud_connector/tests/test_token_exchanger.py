@@ -8,9 +8,14 @@ from concurrent.futures import ThreadPoolExecutor
 from unittest.mock import Mock, patch
 
 import pytest
+import requests
 import responses
 
-from salesforce_datacloud_connector.auth.oauth import JWTAuthenticator
+from tests._keys import TEST_RSA_PRIVATE_KEY_PEM
+from salesforce_datacloud_connector.auth.oauth import (
+    ClientCredentialsAuthenticator,
+    JWTAuthenticator,
+)
 from salesforce_datacloud_connector.auth.token_exchanger import DataCloudTokenExchanger
 from salesforce_datacloud_connector.exceptions import OperationalError
 
@@ -81,7 +86,7 @@ def test_jwt_token_exchange_success():
             login_url="https://test.salesforce.com",
             client_id="test_client_id",
             username="test@example.com",
-            jwt_private_key="-----BEGIN RSA PRIVATE KEY-----\nfake\n-----END RSA PRIVATE KEY-----",
+            jwt_private_key=TEST_RSA_PRIVATE_KEY_PEM,
         )
 
         # Create exchanger
@@ -137,7 +142,7 @@ def test_cdp_token_caching_with_no_buffer():
             login_url="https://test.salesforce.com",
             client_id="test_client_id",
             username="test@example.com",
-            jwt_private_key="-----BEGIN RSA PRIVATE KEY-----\nfake\n-----END RSA PRIVATE KEY-----",
+            jwt_private_key=TEST_RSA_PRIVATE_KEY_PEM,
         )
 
         exchanger = DataCloudTokenExchanger(
@@ -244,7 +249,7 @@ def test_cdp_token_invalidation():
             login_url="https://test.salesforce.com",
             client_id="test_client_id",
             username="test@example.com",
-            jwt_private_key="-----BEGIN RSA PRIVATE KEY-----\nfake\n-----END RSA PRIVATE KEY-----",
+            jwt_private_key=TEST_RSA_PRIVATE_KEY_PEM,
         )
 
         exchanger = DataCloudTokenExchanger(
@@ -298,7 +303,7 @@ def test_core_token_refetched_on_natural_cdp_expiry():
             login_url="https://test.salesforce.com",
             client_id="test_client_id",
             username="test@example.com",
-            jwt_private_key="-----BEGIN RSA PRIVATE KEY-----\nfake\n-----END RSA PRIVATE KEY-----",
+            jwt_private_key=TEST_RSA_PRIVATE_KEY_PEM,
         )
 
         exchanger = DataCloudTokenExchanger(
@@ -340,8 +345,8 @@ def test_core_token_refetched_on_natural_cdp_expiry():
             assert len(exchange_calls) == 2
             # The second exchange must carry the freshly fetched core token, not
             # the one used for the first exchange.
-            assert "core_token_2" in exchange_calls[1].request.url
-            assert "core_token_1" not in exchange_calls[1].request.url
+            assert "core_token_2" in exchange_calls[1].request.body
+            assert "core_token_1" not in exchange_calls[1].request.body
 
 
 @responses.activate
@@ -374,7 +379,7 @@ def test_get_tenant_endpoint_triggers_exchange():
             login_url="https://test.salesforce.com",
             client_id="test_client_id",
             username="test@example.com",
-            jwt_private_key="-----BEGIN RSA PRIVATE KEY-----\nfake\n-----END RSA PRIVATE KEY-----",
+            jwt_private_key=TEST_RSA_PRIVATE_KEY_PEM,
         )
 
         exchanger = DataCloudTokenExchanger(
@@ -420,7 +425,7 @@ def test_cdp_token_exchange_failure():
             login_url="https://test.salesforce.com",
             client_id="test_client_id",
             username="test@example.com",
-            jwt_private_key="-----BEGIN RSA PRIVATE KEY-----\nfake\n-----END RSA PRIVATE KEY-----",
+            jwt_private_key=TEST_RSA_PRIVATE_KEY_PEM,
         )
 
         exchanger = DataCloudTokenExchanger(
@@ -465,7 +470,7 @@ def test_missing_access_token_in_exchange_response():
             login_url="https://test.salesforce.com",
             client_id="test_client_id",
             username="test@example.com",
-            jwt_private_key="-----BEGIN RSA PRIVATE KEY-----\nfake\n-----END RSA PRIVATE KEY-----",
+            jwt_private_key=TEST_RSA_PRIVATE_KEY_PEM,
         )
 
         exchanger = DataCloudTokenExchanger(
@@ -509,7 +514,7 @@ def test_dataspace_included_in_exchange_request():
             login_url="https://test.salesforce.com",
             client_id="test_client_id",
             username="test@example.com",
-            jwt_private_key="-----BEGIN RSA PRIVATE KEY-----\nfake\n-----END RSA PRIVATE KEY-----",
+            jwt_private_key=TEST_RSA_PRIVATE_KEY_PEM,
         )
 
         exchanger = DataCloudTokenExchanger(
@@ -557,7 +562,7 @@ def test_dataspace_omitted_if_none():
             login_url="https://test.salesforce.com",
             client_id="test_client_id",
             username="test@example.com",
-            jwt_private_key="-----BEGIN RSA PRIVATE KEY-----\nfake\n-----END RSA PRIVATE KEY-----",
+            jwt_private_key=TEST_RSA_PRIVATE_KEY_PEM,
         )
 
         exchanger = DataCloudTokenExchanger(
@@ -614,7 +619,7 @@ def test_tenant_endpoint_schemeless_response_gets_https_prefix():
             login_url="https://test.salesforce.com",
             client_id="test_client_id",
             username="test@example.com",
-            jwt_private_key="-----BEGIN RSA PRIVATE KEY-----\nfake\n-----END RSA PRIVATE KEY-----",
+            jwt_private_key=TEST_RSA_PRIVATE_KEY_PEM,
         )
         exchanger = DataCloudTokenExchanger(core_authenticator=jwt_auth, dataspace="default")
 
@@ -683,3 +688,52 @@ def test_client_credentials_token_exchange_success():
     assert "/services/oauth2/token" in responses.calls[0].request.url  # Core token
     assert "grant_type=client_credentials" in responses.calls[0].request.body
     assert "/services/a360/token" in responses.calls[1].request.url  # Exchange
+
+
+@responses.activate
+def test_core_token_sent_in_body_not_url():
+    """The core token must not appear in the URL (exception text, debug logs)."""
+    responses.post(
+        "https://myorg.my.salesforce.com/services/oauth2/token",
+        json={
+            "access_token": "SECRET_CORE_TOKEN",
+            "instance_url": "https://myorg.my.salesforce.com",
+            "expires_in": 7200,
+        },
+    )
+    responses.post(
+        "https://myorg.my.salesforce.com/services/a360/token",
+        json={"access_token": "cdp", "expires_in": 3600, "instance_url": "t.c360a.salesforce.com"},
+    )
+    auth = ClientCredentialsAuthenticator(
+        login_url="https://myorg.my.salesforce.com", client_id="id", client_secret="s"
+    )
+    DataCloudTokenExchanger(auth, dataspace="ds").get_cdp_token()
+
+    call = [c for c in responses.calls if "/services/a360/token" in c.request.url][0]
+    assert "SECRET_CORE_TOKEN" not in call.request.url
+    assert "subject_token=SECRET_CORE_TOKEN" in call.request.body
+    assert "dataspace=ds" in call.request.url
+
+
+@responses.activate
+def test_core_token_not_in_error_when_exchange_connection_fails():
+    responses.post(
+        "https://myorg.my.salesforce.com/services/oauth2/token",
+        json={
+            "access_token": "SECRET_CORE_TOKEN",
+            "instance_url": "https://myorg.my.salesforce.com",
+            "expires_in": 7200,
+        },
+    )
+    responses.post(
+        "https://myorg.my.salesforce.com/services/a360/token",
+        body=requests.exceptions.ConnectionError("boom"),
+    )
+    auth = ClientCredentialsAuthenticator(
+        login_url="https://myorg.my.salesforce.com", client_id="id", client_secret="s"
+    )
+    with patch("salesforce_datacloud_connector.auth._http.time.sleep"):
+        with pytest.raises(OperationalError) as ei:
+            DataCloudTokenExchanger(auth).get_cdp_token()
+    assert "SECRET_CORE_TOKEN" not in str(ei.value)

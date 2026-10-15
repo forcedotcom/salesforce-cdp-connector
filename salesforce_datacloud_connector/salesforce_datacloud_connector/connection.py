@@ -9,6 +9,7 @@ from typing import Dict, List, Optional
 from .api.client import DataCloudQueryClient
 from .cursor import Cursor
 from .exceptions import InterfaceError
+from .http_options import HttpOptions
 from .metadata import DataCloudTable
 
 
@@ -28,6 +29,7 @@ class Connection:
         user_agent: Optional[str] = None,
         query_settings: Optional[Dict[str, str]] = None,
         output_format: str = "arrow",
+        http: Optional[HttpOptions] = None,
     ):
         """
         Initialize connection.
@@ -43,6 +45,8 @@ class Connection:
                 https://tableau.github.io/hyper-db/docs/hyper-api/connection#connection-settings
             output_format: "arrow" (default) or "json". Selects the query
                 result wire format negotiated with off-core Query v3.
+            http: Transport options (session, timeout, TLS verification, proxies)
+                for query requests
 
         Note: Use the connect() factory function instead of instantiating directly.
         """
@@ -56,6 +60,8 @@ class Connection:
         self._client = DataCloudQueryClient(
             tenant_endpoint=token_provider.get_tenant_endpoint(),
             auth_token_getter=token_provider.get_cdp_token,
+            on_unauthorized=token_provider.invalidate_token,
+            http=http,
             dataspace=dataspace,
             workload=workload,
             user_agent=user_agent,
