@@ -199,25 +199,35 @@ def _load_rsa_private_key(key: Union[str, bytes, os.PathLike, None]):
     if not key:
         raise ValueError("jwt_private_key is required")
 
-    is_inline_pem = (
-        isinstance(key, str) and key.lstrip().startswith("-----BEGIN")
-    ) or (isinstance(key, bytes) and key.lstrip().startswith(b"-----BEGIN"))
-    if not is_inline_pem:
+    # Never echo the value back: it may be key material (headerless, quoted, ...).
+    # isfile() is False for anything that isn't an existing file, including
+    # multi-line or over-long strings, so inline keys never reach open().
+    try:
+        is_file = os.path.isfile(key)
+    except (OSError, ValueError, TypeError):
+        is_file = False
+
+    if is_file:
         try:
             with open(key, "rb") as f:
-                key = f.read()
-        except OSError as e:
-            raise ValueError(
-                f"jwt_private_key is neither PEM text nor a readable file path: {e}"
-            ) from e
+                pem = f.read()
+        except OSError:
+            raise ValueError("jwt_private_key file could not be read") from None
+    else:
+        pem = key.encode() if isinstance(key, str) else key
+        if not isinstance(pem, bytes):
+            raise ValueError("jwt_private_key must be PEM text/bytes or a file path")
+        pem = pem.lstrip(b"\xef\xbb\xbf")  # tolerate a UTF-8 BOM
 
-    pem = key.encode() if isinstance(key, str) else key
+    # Cryptography's messages can't be trusted not to quote the input, and the
+    # chained exception would print it in tracebacks, so drop both.
     try:
         private_key = serialization.load_pem_private_key(pem.strip(), password=None)
-    except (ValueError, TypeError) as e:
+    except (ValueError, TypeError):
         raise ValueError(
-            f"Failed to parse jwt_private_key as an unencrypted PEM key: {e}"
-        ) from e
+            "jwt_private_key is not a valid unencrypted PEM private key "
+            "or an existing file path"
+        ) from None
 
     if not isinstance(private_key, rsa.RSAPrivateKey):
         raise ValueError("jwt_private_key must be an RSA private key")

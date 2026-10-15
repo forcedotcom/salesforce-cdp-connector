@@ -8,10 +8,14 @@ from concurrent.futures import ThreadPoolExecutor
 from unittest.mock import Mock, patch
 
 import pytest
+import requests
 import responses
 
 from tests._keys import TEST_RSA_PRIVATE_KEY_PEM
-from salesforce_datacloud_connector.auth.oauth import JWTAuthenticator
+from salesforce_datacloud_connector.auth.oauth import (
+    ClientCredentialsAuthenticator,
+    JWTAuthenticator,
+)
 from salesforce_datacloud_connector.auth.token_exchanger import DataCloudTokenExchanger
 from salesforce_datacloud_connector.exceptions import OperationalError
 
@@ -341,8 +345,8 @@ def test_core_token_refetched_on_natural_cdp_expiry():
             assert len(exchange_calls) == 2
             # The second exchange must carry the freshly fetched core token, not
             # the one used for the first exchange.
-            assert "core_token_2" in exchange_calls[1].request.url
-            assert "core_token_1" not in exchange_calls[1].request.url
+            assert "core_token_2" in exchange_calls[1].request.body
+            assert "core_token_1" not in exchange_calls[1].request.body
 
 
 @responses.activate
@@ -684,3 +688,52 @@ def test_client_credentials_token_exchange_success():
     assert "/services/oauth2/token" in responses.calls[0].request.url  # Core token
     assert "grant_type=client_credentials" in responses.calls[0].request.body
     assert "/services/a360/token" in responses.calls[1].request.url  # Exchange
+
+
+@responses.activate
+def test_core_token_sent_in_body_not_url():
+    """The core token must not appear in the URL (exception text, debug logs)."""
+    responses.post(
+        "https://myorg.my.salesforce.com/services/oauth2/token",
+        json={
+            "access_token": "SECRET_CORE_TOKEN",
+            "instance_url": "https://myorg.my.salesforce.com",
+            "expires_in": 7200,
+        },
+    )
+    responses.post(
+        "https://myorg.my.salesforce.com/services/a360/token",
+        json={"access_token": "cdp", "expires_in": 3600, "instance_url": "t.c360a.salesforce.com"},
+    )
+    auth = ClientCredentialsAuthenticator(
+        login_url="https://myorg.my.salesforce.com", client_id="id", client_secret="s"
+    )
+    DataCloudTokenExchanger(auth, dataspace="ds").get_cdp_token()
+
+    call = [c for c in responses.calls if "/services/a360/token" in c.request.url][0]
+    assert "SECRET_CORE_TOKEN" not in call.request.url
+    assert "subject_token=SECRET_CORE_TOKEN" in call.request.body
+    assert "dataspace=ds" in call.request.url
+
+
+@responses.activate
+def test_core_token_not_in_error_when_exchange_connection_fails():
+    responses.post(
+        "https://myorg.my.salesforce.com/services/oauth2/token",
+        json={
+            "access_token": "SECRET_CORE_TOKEN",
+            "instance_url": "https://myorg.my.salesforce.com",
+            "expires_in": 7200,
+        },
+    )
+    responses.post(
+        "https://myorg.my.salesforce.com/services/a360/token",
+        body=requests.exceptions.ConnectionError("boom"),
+    )
+    auth = ClientCredentialsAuthenticator(
+        login_url="https://myorg.my.salesforce.com", client_id="id", client_secret="s"
+    )
+    with patch("salesforce_datacloud_connector.auth._http.time.sleep"):
+        with pytest.raises(OperationalError) as ei:
+            DataCloudTokenExchanger(auth).get_cdp_token()
+    assert "SECRET_CORE_TOKEN" not in str(ei.value)

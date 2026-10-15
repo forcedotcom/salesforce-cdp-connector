@@ -149,20 +149,22 @@ class DataCloudTokenExchanger:
         """
         exchange_url = f"{instance_url}/services/a360/token"
 
-        params = {
+        # The core token goes in the form body, not the URL, so it can't leak
+        # through exception messages or HTTP debug logs (matches JDBC).
+        data = {
             "grant_type": self.CDP_GRANT_TYPE,
             "subject_token_type": self.CDP_SUBJECT_TOKEN_TYPE,
             "subject_token": core_token,
         }
 
         # Add dataspace if configured
-        if self._dataspace:
-            params["dataspace"] = self._dataspace
+        params = {"dataspace": self._dataspace} if self._dataspace else None
 
         token_data = post_with_retry(
             exchange_url,
             description="CDP token exchange failed",
             retry=self._retry,
+            data=data,
             params=params,
             http=self._http,
         )

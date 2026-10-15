@@ -62,10 +62,45 @@ def test_jwt_expiry_is_configurable():
 
 
 def test_invalid_key_rejected_at_construction():
-    with pytest.raises(ValueError, match="neither PEM text nor a readable file"):
+    with pytest.raises(ValueError, match="not a valid unencrypted PEM"):
         _jwt_auth(jwt_private_key="definitely-not-a-key")
-    with pytest.raises(ValueError, match="Failed to parse"):
+    with pytest.raises(ValueError, match="not a valid unencrypted PEM"):
         _jwt_auth(jwt_private_key="-----BEGIN PRIVATE KEY-----\nbogus\n-----END PRIVATE KEY-----")
+
+
+def _key_body():
+    lines = TEST_RSA_PRIVATE_KEY_PEM.strip().splitlines()
+    return "".join(lines[1:-1])
+
+
+@pytest.mark.parametrize(
+    "shape",
+    ["headerless_one_line", "headerless_multi_line", "quoted_pem", "bom_prefixed_garbled"],
+)
+def test_key_material_never_appears_in_errors_or_tracebacks(shape):
+    import traceback
+
+    pem = TEST_RSA_PRIVATE_KEY_PEM.strip()
+    body = _key_body()
+    value = {
+        "headerless_one_line": body,
+        "headerless_multi_line": "\n".join(body[i : i + 64] for i in range(0, len(body), 64)),
+        "quoted_pem": '"' + pem.replace("MII", "XXX", 1) + '"',
+        "bom_prefixed_garbled": "\ufeff" + pem.replace("MII", "XXX", 1),
+    }[shape]
+    needle = body[100:140]
+
+    with pytest.raises(ValueError) as ei:
+        _jwt_auth(jwt_private_key=value)
+
+    rendered = str(ei.value) + "".join(traceback.format_exception(ei.value))
+    assert needle not in rendered
+    assert ei.value.__cause__ is None
+    assert ei.value.__suppress_context__
+
+
+def test_bom_prefixed_valid_pem_is_accepted():
+    _jwt_auth(jwt_private_key="\ufeff" + TEST_RSA_PRIVATE_KEY_PEM)
 
 
 def test_non_rsa_key_rejected():
