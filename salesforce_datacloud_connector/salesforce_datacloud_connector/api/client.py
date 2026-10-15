@@ -82,9 +82,7 @@ class DataCloudQueryClient:
             ValueError: If output_format is not "arrow" or "json"
         """
         if output_format not in ("arrow", "json"):
-            raise ValueError(
-                f"Invalid output_format: {output_format!r}. Must be 'arrow' or 'json'"
-            )
+            raise ValueError(f"Invalid output_format: {output_format!r}. Must be 'arrow' or 'json'")
 
         self.tenant_endpoint = tenant_endpoint.rstrip("/")
         self.auth_token_getter = auth_token_getter
@@ -93,9 +91,7 @@ class DataCloudQueryClient:
         self.user_agent = user_agent
         self.default_settings: Dict[str, str] = dict(query_settings) if query_settings else {}
         self._output_format = output_format
-        self._data_accept_header = (
-            _ARROW_MEDIA_TYPE if output_format == "arrow" else _JSON_MEDIA_TYPE
-        )
+        self._data_accept_header = _ARROW_MEDIA_TYPE if output_format == "arrow" else _JSON_MEDIA_TYPE
         self._base_url = f"{self.tenant_endpoint}/api/v3/query"
 
     def _build_user_agent(self) -> str:
@@ -189,9 +185,7 @@ class DataCloudQueryClient:
                 if retry_count < self.MAX_RETRIES:
                     time.sleep(self.RETRY_WAIT_SECONDS)
 
-                    return self._make_request(
-                        method, url, params, json_data, retry_count + 1, accept
-                    )
+                    return self._make_request(method, url, params, json_data, retry_count + 1, accept)
 
                 # All retries exhausted
                 self._raise_api_error(response)
@@ -202,9 +196,7 @@ class DataCloudQueryClient:
             # Network errors - retry if possible
             if retry_count < self.MAX_RETRIES:
                 time.sleep(self.RETRY_WAIT_SECONDS)
-                return self._make_request(
-                    method, url, params, json_data, retry_count + 1, accept
-                )
+                return self._make_request(method, url, params, json_data, retry_count + 1, accept)
             raise OperationalError(f"Request failed: {e}") from e
 
     def _raise_api_error(self, response: requests.Response):
@@ -219,9 +211,7 @@ class DataCloudQueryClient:
         except Exception:
             error_message = response.text
 
-        exception = map_http_error_to_exception(
-            response.status_code, error_message, "API request failed"
-        )
+        exception = map_http_error_to_exception(response.status_code, error_message, "API request failed")
         raise exception
 
     @staticmethod
@@ -229,9 +219,7 @@ class DataCloudQueryClient:
         """Build one v3 parameter entry: {"type": <lowercase>, "value": ...}."""
         return {"type": infer_sql_parameter_type(value).lower(), "value": value}
 
-    def _bind_parameters(
-        self, sql: str, params: Optional[Dict[str, Any]]
-    ) -> Tuple[str, List[Dict[str, Any]]]:
+    def _bind_parameters(self, sql: str, params: Optional[Dict[str, Any]]) -> Tuple[str, List[Dict[str, Any]]]:
         """
         Prepare SQL and parameters for v3, which accepts only positional
         (question-mark) parameters.
@@ -269,9 +257,7 @@ class DataCloudQueryClient:
         def _replace(match: "re.Match") -> str:
             name = match.group(1)
             if name not in params:
-                raise ProgrammingError(
-                    f"No value supplied for named parameter ':{name}'"
-                )
+                raise ProgrammingError(f"No value supplied for named parameter ':{name}'")
             sql_params.append(self._param_entry(params[name]))
             return "?"
 
@@ -293,9 +279,7 @@ class DataCloudQueryClient:
         merged = {**self.default_settings, **(settings or {})}
         for key, value in merged.items():
             if not isinstance(value, str):
-                raise ProgrammingError(
-                    f"Query setting '{key}' must be a string, got {type(value).__name__}"
-                )
+                raise ProgrammingError(f"Query setting '{key}' must be a string, got {type(value).__name__}")
         return merged
 
     def execute_query(
@@ -340,9 +324,7 @@ class DataCloudQueryClient:
         if merged_settings:
             request_body["settings"] = merged_settings
 
-        response = self._make_request(
-            "POST", self._base_url, json_data=request_body, accept=self._data_accept_header
-        )
+        response = self._make_request("POST", self._base_url, json_data=request_body, accept=self._data_accept_header)
 
         # Parse status from x-hyperdb-status header (v3) first. The header carries
         # the queryId/rowCount/completionStatus the cursor relies on, and must be
@@ -372,9 +354,7 @@ class DataCloudQueryClient:
 
         return query_response
 
-    def get_query_status(
-        self, query_id: str, wait_time_ms: Optional[int] = None
-    ) -> QueryStatus:
+    def get_query_status(self, query_id: str, wait_time_ms: Optional[int] = None) -> QueryStatus:
         """
         Get query status via GET /api/v3/query/{queryId}.
 
@@ -433,9 +413,7 @@ class DataCloudQueryClient:
         }
 
         try:
-            response = self._make_request(
-                "GET", url, params=params, accept=self._data_accept_header
-            )
+            response = self._make_request("GET", url, params=params, accept=self._data_accept_header)
             if self._output_format == "arrow":
                 # Same zero-length-body case as execute_query: under ADAPTIVE
                 # transfer mode, a chunk that hasn't produced any Arrow binary
@@ -496,9 +474,7 @@ class DataCloudQueryClient:
             # Check timeout
             elapsed = time.time() - start_time
             if elapsed > timeout_seconds:
-                raise OperationalError(
-                    f"Query timed out after {timeout_seconds} seconds"
-                )
+                raise OperationalError(f"Query timed out after {timeout_seconds} seconds")
 
             # Long-polling with waitTimeMs means we don't need additional sleep
             # The server will wait up to waitTimeMs before responding

@@ -161,9 +161,7 @@ class UsernamePasswordAuthenticator(OAuthAuthenticator):
             return access_token, expires_in, instance_url
 
         except requests.exceptions.RequestException as e:
-            raise OperationalError(
-                f"Authentication failed with username/password: {e}"
-            ) from e
+            raise OperationalError(f"Authentication failed with username/password: {e}") from e
 
 
 class JWTAuthenticator(OAuthAuthenticator):
@@ -311,9 +309,7 @@ class RefreshTokenAuthenticator(OAuthAuthenticator):
             return access_token, expires_in, instance_url
 
         except requests.exceptions.RequestException as e:
-            raise OperationalError(
-                f"Authentication failed with refresh token: {e}"
-            ) from e
+            raise OperationalError(f"Authentication failed with refresh token: {e}") from e
 
 
 class ClientCredentialsAuthenticator(OAuthAuthenticator):
@@ -371,9 +367,7 @@ class ClientCredentialsAuthenticator(OAuthAuthenticator):
             return access_token, expires_in, instance_url
 
         except requests.exceptions.RequestException as e:
-            raise OperationalError(
-                f"Authentication failed with client credentials: {e}"
-            ) from e
+            raise OperationalError(f"Authentication failed with client credentials: {e}") from e
 
 
 class SfCliAuthenticator(OAuthAuthenticator):
@@ -415,9 +409,7 @@ class SfCliAuthenticator(OAuthAuthenticator):
         env = {**os.environ, "NO_COLOR": "1"}
 
         try:
-            result = subprocess.run(
-                command, capture_output=True, text=True, timeout=30, env=env
-            )
+            result = subprocess.run(command, capture_output=True, text=True, timeout=30, env=env)
         except FileNotFoundError as e:
             raise OperationalError(
                 f"Salesforce CLI ('{self.cli_path}') not found. Install it from "
@@ -430,9 +422,7 @@ class SfCliAuthenticator(OAuthAuthenticator):
         try:
             payload = json.loads(result.stdout)
         except json.JSONDecodeError as e:
-            raise OperationalError(
-                f"Could not parse output of `{' '.join(command)}`: {e}"
-            ) from e
+            raise OperationalError(f"Could not parse output of `{' '.join(command)}`: {e}") from e
 
         if payload.get("status") != 0:
             message = payload.get("message", "Unknown error from Salesforce CLI")

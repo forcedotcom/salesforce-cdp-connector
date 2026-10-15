@@ -54,15 +54,13 @@ def get_private_key():
 # Validate required configuration at module load time
 if not all([TEST_CONFIG["login_url"], TEST_CONFIG["username"], TEST_CONFIG["client_id"]]):
     pytest.skip(
-        "Off-core e2e smoke test requires SFDC_LOGIN_URL, SFDC_USERNAME, "
-        "and SFDC_CLIENT_ID environment variables.",
+        "Off-core e2e smoke test requires SFDC_LOGIN_URL, SFDC_USERNAME, and SFDC_CLIENT_ID environment variables.",
         allow_module_level=True,
     )
 
 if not get_private_key():
     pytest.skip(
-        "Off-core e2e smoke test requires SFDC_JWT_PRIVATE_KEY or "
-        "SFDC_JWT_PRIVATE_KEY_PATH environment variable.",
+        "Off-core e2e smoke test requires SFDC_JWT_PRIVATE_KEY or SFDC_JWT_PRIVATE_KEY_PATH environment variable.",
         allow_module_level=True,
     )
 
@@ -146,9 +144,7 @@ class TestOffCoreSmoke:
     def test_synthetic_query_with_filter(self, offcore_connection):
         """Test WHERE clause over synthetic data."""
         cursor = offcore_connection.cursor()
-        cursor.execute(
-            "SELECT n FROM generate_series(1, 20) AS t(n) WHERE n > 15 ORDER BY n"
-        )
+        cursor.execute("SELECT n FROM generate_series(1, 20) AS t(n) WHERE n > 15 ORDER BY n")
 
         rows = cursor.fetchall()
         assert len(rows) == 5  # 16, 17, 18, 19, 20
@@ -232,16 +228,16 @@ class TestOffCoreSmoke:
 
 def test_smoke_summary(capsys):
     """Print summary of e2e smoke test configuration."""
-    print("\n" + "="*70)
+    print("\n" + "=" * 70)
     print("Off-Core v3 E2E Smoke Test Configuration")
-    print("="*70)
+    print("=" * 70)
     print(f"Login URL: {TEST_CONFIG['login_url']}")
     print(f"Username: {TEST_CONFIG['username']}")
-    print(f"Client ID: {TEST_CONFIG['client_id'][:20]}..." if TEST_CONFIG['client_id'] else "Client ID: (not set)")
+    print(f"Client ID: {TEST_CONFIG['client_id'][:20]}..." if TEST_CONFIG["client_id"] else "Client ID: (not set)")
     print(f"Dataspace: {TEST_CONFIG['dataspace']}")
     print(f"Workload: {TEST_CONFIG['workload']}")
     print(f"Private key: {'(loaded from path)' if TEST_CONFIG['jwt_private_key_path'] else '(loaded from env)'}")
-    print("="*70)
+    print("=" * 70)
     print("\nTo run this test:")
     print("  pytest tests/test_e2e_offcore_smoke.py -v")
     print("\nOr with explicit e2e marker:")

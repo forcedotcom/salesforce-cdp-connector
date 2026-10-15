@@ -77,20 +77,14 @@ class DataCloudTokenExchanger:
         current_time = time.time()
 
         # Check cache — alive until exact expiry, no buffer.
-        if (
-            self._cached_cdp_token is not None
-            and self._token_expiry is not None
-            and current_time <= self._token_expiry
-        ):
+        if self._cached_cdp_token is not None and self._token_expiry is not None and current_time <= self._token_expiry:
             return self._cached_cdp_token
 
         # Exchange a fresh core token for a CDP token
         core_token = self._core_authenticator.get_oauth_token()
         instance_url = self._core_authenticator.get_instance_url()
 
-        cdp_token, expires_in, tenant_endpoint = self._exchange_token(
-            instance_url, core_token
-        )
+        cdp_token, expires_in, tenant_endpoint = self._exchange_token(instance_url, core_token)
 
         # Cache CDP token
         self._cached_cdp_token = cdp_token
@@ -132,9 +126,7 @@ class DataCloudTokenExchanger:
             self._cached_cdp_token = None
             self._token_expiry = None
 
-    def _exchange_token(
-        self, instance_url: str, core_token: str
-    ) -> tuple[str, int, str]:
+    def _exchange_token(self, instance_url: str, core_token: str) -> tuple[str, int, str]:
         """
         Exchange core token for CDP token via /services/a360/token.
 

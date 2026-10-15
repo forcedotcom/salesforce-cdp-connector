@@ -38,5 +38,17 @@ jobs:
       - name: Lint tests
         run: uv run ruff check tests --statistics
 
+      - name: Format check
+        run: uv run ruff format --check salesforce_datacloud_connector tests
+
       - name: Run tests
-        run: uv run pytest -m "not e2e"
+        run: uv run pytest -m "not e2e" --cov=salesforce_datacloud_connector --cov-report=xml
+
+      - name: Upload coverage to Codecov
+        if: matrix.python-version == '3.11'
+        uses: codecov/codecov-action@v6
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: coverage.xml
+          fail_ci_if_error: true
+          verbose: true

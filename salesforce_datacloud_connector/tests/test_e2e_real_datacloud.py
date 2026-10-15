@@ -45,8 +45,7 @@ TEST_CONFIG = {
 # `pytest -m "not e2e"` in CI) don't fail on import.
 if not TEST_CONFIG["client_id"] or not TEST_CONFIG["client_secret"]:
     pytest.skip(
-        "Live Data Cloud E2E tests require SFDC_CLIENT_ID and "
-        "SFDC_CLIENT_SECRET environment variables to be set.",
+        "Live Data Cloud E2E tests require SFDC_CLIENT_ID and SFDC_CLIENT_SECRET environment variables to be set.",
         allow_module_level=True,
     )
 
@@ -64,15 +63,15 @@ class OAuthCallbackHandler(BaseHTTPRequestHandler):
         query = urllib.parse.urlparse(self.path).query
         params = urllib.parse.parse_qs(query)
 
-        if 'code' in params:
-            _auth_code = params['code'][0]
+        if "code" in params:
+            _auth_code = params["code"][0]
             self.send_response(200)
-            self.send_header('Content-type', 'text/html')
+            self.send_header("Content-type", "text/html")
             self.end_headers()
             self.wfile.write(b"<html><body><h1>Success! Close this window.</h1></body></html>")
         else:
             self.send_response(400)
-            self.send_header('Content-type', 'text/html')
+            self.send_header("Content-type", "text/html")
             self.end_headers()
             self.wfile.write(b"<html><body><h1>Error during OAuth</h1></body></html>")
 
@@ -109,15 +108,15 @@ def get_refresh_token_via_oauth(login_url, client_id, client_secret, redirect_ur
     # Build authorization URL
     auth_url = f"{login_url}/services/oauth2/authorize"
     params = {
-        'response_type': 'code',
-        'client_id': client_id,
-        'redirect_uri': redirect_uri,
-        'scope': 'api refresh_token offline_access',
+        "response_type": "code",
+        "client_id": client_id,
+        "redirect_uri": redirect_uri,
+        "scope": "api refresh_token offline_access",
     }
     auth_url_full = f"{auth_url}?{urllib.parse.urlencode(params)}"
 
     # Start local server
-    server = HTTPServer(('localhost', 33333), OAuthCallbackHandler)
+    server = HTTPServer(("localhost", 33333), OAuthCallbackHandler)
 
     # Open browser in separate thread
     def open_browser():
@@ -144,18 +143,18 @@ def get_refresh_token_via_oauth(login_url, client_id, client_secret, redirect_ur
     # Exchange code for tokens
     token_url = f"{login_url}/services/oauth2/token"
     data = {
-        'grant_type': 'authorization_code',
-        'code': _auth_code,
-        'client_id': client_id,
-        'client_secret': client_secret,
-        'redirect_uri': redirect_uri,
+        "grant_type": "authorization_code",
+        "code": _auth_code,
+        "client_id": client_id,
+        "client_secret": client_secret,
+        "redirect_uri": redirect_uri,
     }
 
     response = requests.post(token_url, data=data, timeout=30)
     response.raise_for_status()
     token_data = response.json()
 
-    refresh_token = token_data.get('refresh_token')
+    refresh_token = token_data.get("refresh_token")
     if not refresh_token:
         raise ValueError("No refresh token in OAuth response")
 
@@ -175,9 +174,9 @@ def refresh_token():
         return token
 
     # Fall back to OAuth flow (requires user interaction)
-    print("\n" + "="*70)
+    print("\n" + "=" * 70)
     print("E2E Test: Getting Refresh Token")
-    print("="*70)
+    print("=" * 70)
     print("\nNo SFDC_REFRESH_TOKEN environment variable found.")
     print("Will attempt OAuth Authorization Code Flow...")
     print("\nA browser window will open. Please:")
@@ -192,7 +191,7 @@ def refresh_token():
             client_id=TEST_CONFIG["client_id"],
             client_secret=TEST_CONFIG["client_secret"],
             redirect_uri=TEST_CONFIG["redirect_uri"],
-            timeout=120
+            timeout=120,
         )
         print(f"\n✅ Got refresh token: {token[:50]}...")
         return token
@@ -218,7 +217,7 @@ def data_cloud_connection(refresh_token):
         auth_type="refresh_token",
         client_id=TEST_CONFIG["client_id"],
         client_secret=TEST_CONFIG["client_secret"],
-        refresh_token=refresh_token
+        refresh_token=refresh_token,
     )
     yield conn
     conn.close()
@@ -257,8 +256,9 @@ class TestE2EDataCloud:
         cursor.execute(f"SELECT COUNT(*) FROM {TEST_CONFIG['table_name']}")
         count = cursor.fetchone()[0]
 
-        assert count >= TEST_CONFIG["expected_min_rows"], \
+        assert count >= TEST_CONFIG["expected_min_rows"], (
             f"Expected at least {TEST_CONFIG['expected_min_rows']} rows, got {count}"
+        )
         cursor.close()
 
     def test_05_column_metadata(self, data_cloud_connection):
@@ -328,14 +328,10 @@ class TestE2EDataCloud:
         cursor = data_cloud_connection.cursor()
 
         # Query with WHERE clause
-        cursor.execute(
-            f"SELECT COUNT(*) FROM {TEST_CONFIG['table_name']} WHERE Sex__c = 'Male'"
-        )
+        cursor.execute(f"SELECT COUNT(*) FROM {TEST_CONFIG['table_name']} WHERE Sex__c = 'Male'")
         male_count = cursor.fetchone()[0]
 
-        cursor.execute(
-            f"SELECT COUNT(*) FROM {TEST_CONFIG['table_name']} WHERE Sex__c = 'Female'"
-        )
+        cursor.execute(f"SELECT COUNT(*) FROM {TEST_CONFIG['table_name']} WHERE Sex__c = 'Female'")
         female_count = cursor.fetchone()[0]
 
         # Both should have data
@@ -351,10 +347,7 @@ class TestE2EDataCloud:
     def test_10_group_by(self, data_cloud_connection):
         """Test GROUP BY aggregation."""
         cursor = data_cloud_connection.cursor()
-        cursor.execute(
-            f"SELECT Sex__c, COUNT(*) as count FROM {TEST_CONFIG['table_name']} "
-            f"GROUP BY Sex__c"
-        )
+        cursor.execute(f"SELECT Sex__c, COUNT(*) as count FROM {TEST_CONFIG['table_name']} GROUP BY Sex__c")
 
         results = cursor.fetchall()
         assert len(results) >= 2  # At least Male, Female (maybe Both)
@@ -371,10 +364,7 @@ class TestE2EDataCloud:
     def test_11_order_by(self, data_cloud_connection):
         """Test ORDER BY sorting."""
         cursor = data_cloud_connection.cursor()
-        cursor.execute(
-            f"SELECT Year__c FROM {TEST_CONFIG['table_name']} "
-            f"ORDER BY Year__c LIMIT 10"
-        )
+        cursor.execute(f"SELECT Year__c FROM {TEST_CONFIG['table_name']} ORDER BY Year__c LIMIT 10")
 
         years = [row[0] for row in cursor.fetchall()]
         assert len(years) == 10
@@ -427,7 +417,7 @@ class TestE2EDataCloud:
         columns = [desc[0] for desc in cursor.description]
 
         # Verify expected columns exist
-        expected_columns = ['Age_Group__c', 'Sex__c', 'Year__c', 'Country_Name__c']
+        expected_columns = ["Age_Group__c", "Sex__c", "Year__c", "Country_Name__c"]
         for expected_col in expected_columns:
             assert expected_col in columns, f"Expected column {expected_col} not found"
 
@@ -487,14 +477,14 @@ class TestE2EEdgeCases:
 
 def test_e2e_summary(capsys):
     """Print summary of E2E test configuration."""
-    print("\n" + "="*70)
+    print("\n" + "=" * 70)
     print("End-to-End Test Configuration")
-    print("="*70)
+    print("=" * 70)
     print(f"Login URL: {TEST_CONFIG['login_url']}")
     print(f"Table: {TEST_CONFIG['table_name']}")
     print(f"Expected min rows: {TEST_CONFIG['expected_min_rows']:,}")
     print(f"Client ID: {TEST_CONFIG['client_id'][:20]}...")
-    print("="*70)
+    print("=" * 70)
     print("\nTo run these tests:")
     print("  pytest tests/test_e2e_real_datacloud.py -v")
     print("\nTo skip OAuth (use existing token):")

@@ -1,5 +1,7 @@
 # Salesforce Data Cloud Python Connector
 
+[![codecov](https://codecov.io/gh/forcedotcom/salesforce-cdp-connector/graph/badge.svg?token=R29XGIEGVZ)](https://codecov.io/gh/forcedotcom/salesforce-cdp-connector)
+
 The official Salesforce Data Cloud Python connector — a DB-API 2.0 compliant
 driver for querying Salesforce Data Cloud using the Query API. Designed for
 use from Jupyter notebooks, pandas pipelines, ETL scripts, and any other

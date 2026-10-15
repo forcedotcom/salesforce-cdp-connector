@@ -230,6 +230,7 @@ class TestBuildDescriptionTuple:
 
     def test_bytea_maps_to_binary(self):
         from salesforce_datacloud_connector.types import BINARY
+
         desc = build_description_tuple({"name": "payload", "type": "bytea"})
         assert desc[1] == BINARY
 
