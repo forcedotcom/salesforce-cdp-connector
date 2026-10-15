@@ -93,7 +93,7 @@ def test_key_material_never_appears_in_errors_or_tracebacks(shape):
     with pytest.raises(ValueError) as ei:
         _jwt_auth(jwt_private_key=value)
 
-    rendered = str(ei.value) + "".join(traceback.format_exception(ei.value))
+    rendered = str(ei.value) + "".join(traceback.format_exception(ei.type, ei.value, ei.tb))
     assert needle not in rendered
     assert ei.value.__cause__ is None
     assert ei.value.__suppress_context__
