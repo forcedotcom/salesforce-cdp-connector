@@ -21,6 +21,8 @@ jobs:
         with:
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
-          # A PAT is required: releases created with GITHUB_TOKEN do not
-          # trigger other workflows, so v2-publish.yml would never run.
-          token: ${{ secrets.RELEASE_PLEASE_TOKEN }}
+          # GITHUB_TOKEN (as in datacloud-jdbc) keeps release commits signed,
+          # which the repo ruleset requires. Releases it creates do not
+          # trigger other workflows, so publish v2 manually with
+          # v2-publish.yml's workflow_dispatch.
+          token: ${{ secrets.GITHUB_TOKEN }}

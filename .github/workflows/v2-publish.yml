@@ -3,28 +3,41 @@ name: v2 Publish to PyPI
 on:
   release:
     types: [published]
+  # Releases created by release-please with GITHUB_TOKEN do not fire the
+  # `release` event, so publish them manually (same as datacloud-jdbc).
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: 'Release tag to publish (e.g. salesforce-datacloud-connector-2.0.0)'
+        required: true
+        type: string
 
 permissions:
   contents: read
 
+env:
+  TAG_NAME: ${{ github.event_name == 'workflow_dispatch' && inputs.tag_name || github.event.release.tag_name }}
+
 jobs:
   validate:
-    if: startsWith(github.event.release.tag_name, 'salesforce-datacloud-connector-')
+    if: startsWith(github.event_name == 'workflow_dispatch' && inputs.tag_name || github.event.release.tag_name, 'salesforce-datacloud-connector-')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.TAG_NAME }}
       - name: Check tag matches pyproject version
         working-directory: salesforce_datacloud_connector
         run: |
-          TAG="${GITHUB_REF#refs/tags/salesforce-datacloud-connector-}"
+          TAG="${TAG_NAME#salesforce-datacloud-connector-}"
           PKG_VERSION=$(python3 -c "import tomllib; print(tomllib.load(open('pyproject.toml','rb'))['project']['version'])")
           if [ "$TAG" != "$PKG_VERSION" ]; then
-            echo "::error::Tag salesforce-datacloud-connector-${TAG} does not match pyproject version ${PKG_VERSION}"
+            echo "::error::Tag ${TAG_NAME} does not match pyproject version ${PKG_VERSION}"
             exit 1
           fi
 
   test:
-    if: startsWith(github.event.release.tag_name, 'salesforce-datacloud-connector-')
+    if: startsWith(github.event_name == 'workflow_dispatch' && inputs.tag_name || github.event.release.tag_name, 'salesforce-datacloud-connector-')
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -35,6 +48,8 @@ jobs:
         working-directory: salesforce_datacloud_connector
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.TAG_NAME }}
       - uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
@@ -51,6 +66,8 @@ jobs:
         working-directory: salesforce_datacloud_connector
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.TAG_NAME }}
       - uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true

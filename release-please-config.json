@@ -10,7 +10,11 @@
       "include-v-in-tag": false,
       "changelog-path": "CHANGELOG.md",
       "extra-files": [
-        "salesforce_datacloud_connector/__init__.py"
+        {
+          "type": "toml",
+          "path": "uv.lock",
+          "jsonpath": "$.package[?(@.name=='salesforce-datacloud-connector')].version"
+        }
       ]
     }
   }
