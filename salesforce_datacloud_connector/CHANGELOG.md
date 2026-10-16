@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.0](https://github.com/forcedotcom/salesforce-cdp-connector/compare/salesforce-datacloud-connector-2.0.0...salesforce-datacloud-connector-2.0.0) (2026-10-16)
+
+
+### Features
+
+* **auth:** add Salesforce CLI authenticator for local/dev ([#63](https://github.com/forcedotcom/salesforce-cdp-connector/issues/63)) ([4706a87](https://github.com/forcedotcom/salesforce-cdp-connector/commit/4706a878ee53e6db3d1c4ca0e5601343a7a0d32f))
+* **auth:** surface OAuth errors, retry token calls, refresh on 401, add cdp_token auth, harden JWT ([#70](https://github.com/forcedotcom/salesforce-cdp-connector/issues/70)) ([3f526c7](https://github.com/forcedotcom/salesforce-cdp-connector/commit/3f526c711206abb607eef927ecbda8dd71dce12b))
+* **client:** send User-Agent header with optional caller identifier ([#67](https://github.com/forcedotcom/salesforce-cdp-connector/issues/67)) ([0dadc3b](https://github.com/forcedotcom/salesforce-cdp-connector/commit/0dadc3bc77261f402f311afed0469afbc0f90cc2))
+* **threadsafety:** allow connections to be shared across threads ([#64](https://github.com/forcedotcom/salesforce-cdp-connector/issues/64)) ([62e2782](https://github.com/forcedotcom/salesforce-cdp-connector/commit/62e2782c7c2c0ee4c08278a62266151a2026bca9))
+
 ## [Unreleased]
 
 ### Added
