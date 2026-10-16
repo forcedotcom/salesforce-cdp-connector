@@ -2371,7 +2371,7 @@ wheels = [
 
 [[package]]
 name = "salesforce-datacloud-connector"
-version = "2.0.0b2"
+version = "2.0.0"
 source = { editable = "." }
 dependencies = [
     { name = "cryptography", version = "47.0.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version <= '3.9'" },
