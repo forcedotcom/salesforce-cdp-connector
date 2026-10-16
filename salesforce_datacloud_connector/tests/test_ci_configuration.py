@@ -107,12 +107,17 @@ class TestDependabotConfiguration:
         for update in config["updates"]:
             directory = update["directory"]
             ecosystem = update["package-ecosystem"]
-            prefix = update.get("commit-message", {}).get("prefix", "")
-            prefixes[f"{ecosystem}:{directory}"] = prefix
+            commit_message = update.get("commit-message", {})
+            prefixes[f"{ecosystem}:{directory}"] = commit_message.get("prefix", "")
+            # `include: scope` appends "(deps)" after the prefix, producing titles like
+            # "deps(v2):(deps): ..." that conventional-commit parsers (pr-title.yml,
+            # release-please) reject.
+            assert "include" not in commit_message, f"Do not set include: scope for {directory}"
 
-        assert prefixes.get("pip:/", "") == "deps(v1):", "V1 prefix must be 'deps(v1):'"
-        assert prefixes.get("pip:/salesforce_datacloud_connector", "") == "deps(v2):", "V2 prefix must be 'deps(v2):'"
-        assert prefixes.get("github-actions:/", "") == "deps(actions):", "Actions prefix must be 'deps(actions):'"
+        # No trailing colon: Dependabot adds ": " itself, giving "deps(v2): bump ...".
+        assert prefixes.get("pip:/", "") == "deps(v1)", "V1 prefix must be 'deps(v1)'"
+        assert prefixes.get("pip:/salesforce_datacloud_connector", "") == "deps(v2)", "V2 prefix must be 'deps(v2)'"
+        assert prefixes.get("github-actions:/", "") == "deps(actions)", "Actions prefix must be 'deps(actions)'"
 
 
 class TestV2WorkflowConfiguration:

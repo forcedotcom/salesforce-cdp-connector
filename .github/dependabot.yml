@@ -14,8 +14,7 @@ updates:
       day: "monday"
       time: "09:00"
     commit-message:
-      prefix: "deps(v1):"
-      include: "scope"
+      prefix: "deps(v1)"
     labels:
       - "dependencies"
       - "v1-deprecated"
@@ -41,8 +40,7 @@ updates:
       day: "monday"
       time: "09:00"
     commit-message:
-      prefix: "deps(v2):"
-      include: "scope"
+      prefix: "deps(v2)"
     labels:
       - "dependencies"
       - "v2"
@@ -65,8 +63,7 @@ updates:
       day: "monday"
       time: "09:00"
     commit-message:
-      prefix: "deps(actions):"
-      include: "scope"
+      prefix: "deps(actions)"
     labels:
       - "dependencies"
       - "github-actions"

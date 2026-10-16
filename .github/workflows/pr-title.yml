@@ -1,0 +1,34 @@
+name: PR title
+
+# Release Please derives versions and changelog entries from conventional
+# commits. PRs are squash-merged, so the PR title becomes the commit message.
+
+on:
+  pull_request_target:
+    types: [opened, edited, synchronize, reopened]
+
+permissions:
+  pull-requests: read
+
+jobs:
+  semantic-title:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: amannn/action-semantic-pull-request@v5
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          # `deps` is the Dependabot prefix (see .github/dependabot.yml).
+          types: |
+            feat
+            fix
+            perf
+            revert
+            docs
+            style
+            refactor
+            test
+            build
+            ci
+            chore
+            deps

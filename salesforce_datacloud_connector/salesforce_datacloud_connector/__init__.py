@@ -26,6 +26,8 @@ Basic usage:
 """
 
 import os
+from importlib.metadata import PackageNotFoundError
+from importlib.metadata import version as _pkg_version
 from typing import Dict, Optional, Union
 
 # DB-API 2.0 module globals
@@ -313,4 +315,7 @@ __all__ = [
 ]
 
 # Package metadata
-__version__ = "2.0.0b2"
+try:
+    __version__ = _pkg_version("salesforce-datacloud-connector")
+except PackageNotFoundError:  # running from a source tree that was never installed
+    __version__ = "0+unknown"
