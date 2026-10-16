@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "salesforce-datacloud-connector"
-version = "2.0.0b2"
+version = "2.0.0"
 description = "Salesforce Data Cloud Python connector (V3 driver, beta)"
 readme = "README.md"
 requires-python = ">=3.8"
