@@ -82,6 +82,18 @@ class TestBuildQueries:
         with pytest.raises(ProgrammingError):
             _build_tables_query(None, None, ["TABLE", bad_type])
 
+    def test_build_queries_exact_match_uses_equality(self):
+        """exact=True compares names with = so % and _ are not wildcards."""
+        for sql, params in (
+            _build_tables_query("public", "Account", None, exact=True),
+            _build_columns_query("public", "Account", exact=True),
+        ):
+            assert "n.nspname = ?" in sql
+            assert "c.relname = ?" in sql
+            assert "n.nspname LIKE ?" not in sql
+            assert "c.relname LIKE ?" not in sql
+            assert params == {"schema_pattern": "public", "table_name_pattern": "Account"}
+
     def test_build_columns_query_no_filters(self):
         """Test building columns query without filters."""
         sql, params = _build_columns_query(None, None)
@@ -286,6 +298,32 @@ class TestGetTableMetadataPg:
         assert isinstance(result, DataCloudTable)
         assert result.name == "Account"
         assert len(result.fields) == 1
+
+    @pytest.mark.parametrize("name", ["Account%", "Acc_unt", "%"])
+    def test_get_table_metadata_pg_does_not_treat_wildcards_as_patterns(self, name):
+        """A name containing % or _ must be matched literally, not as a LIKE pattern."""
+        cursor = Mock()
+        cursor.fetchall.return_value = []
+
+        assert get_table_metadata_pg(cursor, table_name=name, schema="public%", dataspace="default") is None
+
+        sql, params = cursor.execute.call_args_list[0].args
+        assert "c.relname = ?" in sql
+        assert "n.nspname = ?" in sql
+        assert "c.relname LIKE ?" not in sql
+        assert "n.nspname LIKE ?" not in sql
+        assert params == {"schema_pattern": "public%", "table_name_pattern": name}
+
+    def test_list_tables_pg_still_treats_patterns_as_like(self):
+        """list_tables keeps LIKE semantics for its *_pattern arguments."""
+        cursor = Mock()
+        cursor.fetchall.return_value = []
+
+        list_tables_pg(cursor, schema_pattern="sales%", table_name_pattern="Account%")
+
+        sql, _ = cursor.execute.call_args_list[0].args
+        assert "c.relname LIKE ?" in sql
+        assert "n.nspname LIKE ?" in sql
 
     def test_get_table_metadata_pg_requires_table_name(self):
         """Test that get_table_metadata_pg requires table_name."""

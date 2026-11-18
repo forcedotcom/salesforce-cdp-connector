@@ -69,6 +69,7 @@ def list_tables_pg(
     table_name_pattern: Optional[str] = None,
     table_types: Optional[List[str]] = None,
     dataspace: Optional[str] = None,
+    exact: bool = False,
 ) -> List[DataCloudTable]:
     """
     List tables by querying pg_catalog.
@@ -79,12 +80,14 @@ def list_tables_pg(
         table_name_pattern: SQL LIKE pattern for table name (e.g., "Account%")
         table_types: List of table types (e.g., ["TABLE", "VIEW"]), defaults to all
         dataspace: Dataspace name
+        exact: If True, the schema and table name are matched literally with =
+            instead of as LIKE patterns, so % and _ are not wildcards.
 
     Returns:
         List of DataCloudTable objects with populated fields.
     """
     # Build and execute tables query
-    tables_sql, tables_params = _build_tables_query(schema_pattern, table_name_pattern, table_types)
+    tables_sql, tables_params = _build_tables_query(schema_pattern, table_name_pattern, table_types, exact)
     cursor.execute(tables_sql, tables_params)
     table_rows = cursor.fetchall()
 
@@ -92,7 +95,7 @@ def list_tables_pg(
         return []
 
     # Build and execute columns query for all tables
-    columns_sql, columns_params = _build_columns_query(schema_pattern, table_name_pattern)
+    columns_sql, columns_params = _build_columns_query(schema_pattern, table_name_pattern, exact)
     cursor.execute(columns_sql, columns_params)
     column_rows = cursor.fetchall()
 
@@ -156,13 +159,14 @@ def get_table_metadata_pg(
     if not table_name:
         raise ValueError("table_name is required")
 
-    # List tables with exact name match
+    # Exact (=) match: the name is an identifier, not a LIKE pattern
     tables = list_tables_pg(
         cursor,
         schema_pattern=schema,
         table_name_pattern=table_name,
         table_types=None,
         dataspace=dataspace,
+        exact=True,
     )
 
     if not tables:
@@ -205,26 +209,30 @@ def _build_tables_query(
     schema_pattern: Optional[str],
     table_name_pattern: Optional[str],
     table_types: Optional[List[str]],
+    exact: bool = False,
 ) -> Tuple[str, Dict[str, Any]]:
     """
     Build tables query with filters.
+
+    With exact=True the schema and table name filters use = instead of LIKE.
 
     Returns:
         Tuple of (sql_string, parameters_dict)
     """
     sql = GET_TABLES_QUERY
     params = {}
+    match_op = "=" if exact else "LIKE"
 
     # The v3 query client sends positional (qmark) parameters, so placeholders
     # must be ? — a :named placeholder makes the server reject the query with
     # "conflicting parameter style 'named' ... set to 'qmark'". Insertion order
     # (schema before table) matches the positional array _bind_parameters builds.
     if schema_pattern:
-        sql += " AND n.nspname LIKE ?"
+        sql += f" AND n.nspname {match_op} ?"
         params["schema_pattern"] = schema_pattern
 
     if table_name_pattern:
-        sql += " AND c.relname LIKE ?"
+        sql += f" AND c.relname {match_op} ?"
         params["table_name_pattern"] = table_name_pattern
 
     if table_types:
@@ -242,23 +250,27 @@ def _build_tables_query(
 def _build_columns_query(
     schema_pattern: Optional[str],
     table_name_pattern: Optional[str],
+    exact: bool = False,
 ) -> Tuple[str, Dict[str, Any]]:
     """
     Build columns query with filters.
+
+    With exact=True the schema and table name filters use = instead of LIKE.
 
     Returns:
         Tuple of (sql_string, parameters_dict)
     """
     sql = GET_COLUMNS_QUERY
     params = {}
+    match_op = "=" if exact else "LIKE"
 
     # Positional (qmark) placeholders for v3; see _build_tables_query.
     if schema_pattern:
-        sql += " AND n.nspname LIKE ?"
+        sql += f" AND n.nspname {match_op} ?"
         params["schema_pattern"] = schema_pattern
 
     if table_name_pattern:
-        sql += " AND c.relname LIKE ?"
+        sql += f" AND c.relname {match_op} ?"
         params["table_name_pattern"] = table_name_pattern
 
     sql += " ORDER BY n.nspname, c.relname, a.attnum"
