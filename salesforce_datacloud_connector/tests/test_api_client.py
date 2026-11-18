@@ -15,6 +15,15 @@ from salesforce_datacloud_connector.api.client import DataCloudQueryClient
 from salesforce_datacloud_connector.api.models import QueryStatus
 from salesforce_datacloud_connector.exceptions import DatabaseError, OperationalError, ProgrammingError
 
+
+from salesforce_datacloud_connector.exceptions import (
+    DataError,
+    Error,
+    IntegrityError,
+    InternalError,
+    NotSupportedError,
+)
+
 from ._arrow_fixtures import build_arrow_ipc_bytes
 
 
@@ -535,7 +544,9 @@ def test_error_response_v3():
     with pytest.raises(ProgrammingError) as exc_info:
         client.execute_query("SELECT * FROM invalid syntax")
 
-    assert "SQL syntax error" in str(exc_info.value)
+    # Without an x-hyperdb-status header the body is not read: generic error
+    assert "HTTP 400" in str(exc_info.value)
+    assert exc_info.value.sqlstate == "HY000"
     assert exc_info.value.http_status == 400
 
 
@@ -1289,6 +1300,142 @@ def _capture_query_body(client, **kwargs):
         rsps.add_callback(responses.POST, "https://test.c360a.salesforce.com/api/v3/query", callback=check_request)
         client.execute_query("SELECT 1", **kwargs)
     return sent
+
+
+def _error_status_header(sqlstate, message, **extra):
+    """Build an x-hyperdb-status value as the server sends it with an error (ensure_ascii keeps it header-safe)."""
+    error = {
+        "error": sqlstate,
+        "message": message,
+        "details": {"customerDetail": "line 1, column 15", "errorSource": "User", "position": {"startPosition": 15}},
+    }
+    return json.dumps(
+        {"queryId": None, "completionStatus": "ERROR", "chunkCount": 0, "rowCount": 0, "error": error, **extra}
+    )
+
+
+def _execute_expecting_error(status, headers=None, **response_kwargs):
+    with responses.RequestsMock() as rsps, patch("salesforce_datacloud_connector.api.client.time.sleep"):
+        rsps.add(responses.POST, _QUERY_URL, status=status, headers=headers or {}, **response_kwargs)
+        with pytest.raises(Error) as excinfo:
+            _json_client().execute_query("SELECT * FROM no_such_table_xyz")
+    return excinfo.value
+
+
+@pytest.mark.parametrize(
+    "sqlstate, expected_class",
+    [
+        ("42P01", ProgrammingError),  # undefined table
+        ("42883", ProgrammingError),  # undefined function
+        ("22P02", DataError),  # invalid text representation (bad cast)
+        ("22012", DataError),  # division by zero
+        ("23505", IntegrityError),
+        ("0A000", NotSupportedError),
+        ("57014", OperationalError),  # query canceled
+        ("53200", OperationalError),  # out of memory
+        ("XX000", InternalError),
+    ],
+)
+def test_error_header_sqlstate_selects_exception_class(sqlstate, expected_class):
+    err = _execute_expecting_error(
+        400, headers={"x-hyperdb-status": _error_status_header(sqlstate, "server said no")}, body=""
+    )
+
+    assert type(err) is expected_class
+    assert err.sqlstate == sqlstate
+    assert err.http_status == 400
+    assert "server said no" in str(err)
+    assert f"SQLSTATE: {sqlstate}" in str(err)
+    assert err.details["customerDetail"] == "line 1, column 15"
+    assert err.details["errorSource"] == "User"
+    assert err.details["position"] == {"startPosition": 15}
+
+
+def test_error_header_message_wins_over_empty_body():
+    """The unknown-table response has an empty body: the message lives only in the header."""
+    message = 'table "no_such_table_xyz" does not exist [TraceId: abc]'
+    err = _execute_expecting_error(400, headers={"x-hyperdb-status": _error_status_header("42P01", message)}, body="")
+
+    assert isinstance(err, ProgrammingError)
+    assert message in str(err)
+    assert "API request failed" not in str(err)
+
+
+def test_error_header_non_ascii_message_round_trips():
+    message = "Spalte „für“ existiert nicht – ☃"
+    header = _error_status_header("42703", message)
+    assert header.isascii()  # json.dumps escapes non-ASCII, as the server does
+
+    err = _execute_expecting_error(400, headers={"x-hyperdb-status": header}, body="")
+
+    assert message in str(err)
+
+
+def test_error_header_applies_to_follow_up_calls():
+    status_url = f"{_QUERY_URL}/q1/rows"
+    header = _error_status_header("57014", "canceling statement due to user request", queryId="q1")
+    with responses.RequestsMock() as rsps:
+        rsps.add(responses.GET, status_url, status=400, headers={"x-hyperdb-status": header}, body="")
+        with pytest.raises(OperationalError) as excinfo:
+            _json_client().fetch_results("q1", offset=0)
+
+    assert excinfo.value.sqlstate == "57014"
+    assert "canceling statement" in str(excinfo.value)
+
+
+def test_error_message_follows_the_jdbc_layout():
+    header = _error_status_header("42P01", 'table "t" does not exist [TraceId: abc]', queryId="q1")
+    err = _execute_expecting_error(400, headers={"x-hyperdb-status": header}, body="")
+
+    assert str(err) == (
+        'Failed to execute query: table "t" does not exist [TraceId: abc]\nSQLSTATE: 42P01\nQUERY-ID: q1'
+    )
+
+
+def test_error_message_has_no_query_id_line_when_the_server_sent_none():
+    err = _execute_expecting_error(400, headers={"x-hyperdb-status": _error_status_header("42601", "syntax")}, body="")
+
+    assert str(err) == "Failed to execute query: syntax\nSQLSTATE: 42601"
+
+
+def test_error_without_header_is_generic_and_ignores_the_body():
+    err = _execute_expecting_error(400, json={"message": "SQL syntax error"})
+
+    assert type(err) is ProgrammingError  # the HTTP status still picks the class
+    assert str(err) == "Failed to execute query: HTTP 400 Bad Request\nSQLSTATE: HY000"
+    assert err.sqlstate == "HY000"
+    assert err.details is None
+    assert err.http_status == 400
+
+
+@pytest.mark.parametrize("header", ["not json", "[]", '{"completionStatus": "ERROR"}', '{"error": "oops"}'])
+def test_error_with_unusable_header_is_generic(header):
+    err = _execute_expecting_error(400, headers={"x-hyperdb-status": header}, json={"message": "SQL syntax error"})
+
+    assert type(err) is ProgrammingError
+    assert str(err) == "Failed to execute query: HTTP 400 Bad Request\nSQLSTATE: HY000"
+    assert err.sqlstate == "HY000"
+
+
+@pytest.mark.parametrize(
+    "status, expected_class", [(401, OperationalError), (404, ProgrammingError), (503, InternalError)]
+)
+def test_error_without_header_still_maps_the_http_status(status, expected_class):
+    err = _execute_expecting_error(status, body="")
+
+    assert type(err) is expected_class
+    assert err.sqlstate == "HY000"
+
+
+def test_error_header_with_unknown_sqlstate_class_uses_http_status():
+    err = _execute_expecting_error(500, headers={"x-hyperdb-status": _error_status_header("ZZ999", "odd")}, body="")
+
+    assert type(err) is InternalError
+    assert err.sqlstate == "ZZ999"
+    assert "odd" in str(err)
+
+
+_QUERY_URL = "https://test.c360a.salesforce.com/api/v3/query"
 
 
 def _json_client():

@@ -36,6 +36,10 @@ _JSON_MEDIA_TYPE = "application/json"
 _ARROW_MEDIA_TYPE = "application/vnd.apache.arrow.stream"
 
 
+# SQLSTATE for failures the server did not describe (the JDBC driver uses the same code).
+_GENERIC_SQLSTATE = "HY000"
+
+
 class DataCloudQueryClient:
     """
     Client for interacting with Salesforce Data Cloud Query API.
@@ -252,16 +256,58 @@ class DataCloudQueryClient:
         """
         Raise appropriate exception for API error response.
 
-        V3 error body: {"timestamp", "error", "message", "path", "tenantId", "internalErrorCode", "details"}
-        """
-        try:
-            error_data = response.json()
-            error_message = error_data.get("message", response.text)
-        except Exception:
-            error_message = response.text
+        The server reports a failure in the x-hyperdb-status header (JSON with
+        error.error = SQLSTATE, error.message and error.details); the body is
+        often empty and is not read. The message follows the JDBC driver:
 
-        exception = map_http_error_to_exception(response.status_code, error_message, "API request failed")
-        raise exception
+            Failed to execute query: <server message>
+            SQLSTATE: <sqlstate>
+            QUERY-ID: <query id>        (only when the server sent one)
+
+        A response without a usable header gets the generic SQLSTATE HY000 and
+        the HTTP status line as its message; the HTTP status still selects the
+        exception class.
+        """
+        header_error = self._error_from_status_header(response)
+        if header_error:
+            sqlstate = header_error.get("error") or _GENERIC_SQLSTATE
+            reason = header_error.get("message") or f"HTTP {response.status_code} {response.reason}"
+            details = header_error.get("details") or None
+        else:
+            sqlstate, details = _GENERIC_SQLSTATE, None
+            reason = f"HTTP {response.status_code} {response.reason}"
+
+        message = f"Failed to execute query: {reason}\nSQLSTATE: {sqlstate}"
+        query_id = self._query_id_from_status_header(response)
+        if query_id:
+            message += f"\nQUERY-ID: {query_id}"
+
+        raise map_http_error_to_exception(response.status_code, message, sqlstate=sqlstate, details=details)
+
+    @staticmethod
+    def _status_header(response: requests.Response) -> Optional[Dict[str, Any]]:
+        """Return the parsed x-hyperdb-status header, or None if absent or not a JSON object."""
+        header = response.headers.get("x-hyperdb-status")
+        if not header:
+            return None
+        try:
+            parsed = json.loads(header)
+        except ValueError:
+            return None
+        return parsed if isinstance(parsed, dict) else None
+
+    @classmethod
+    def _error_from_status_header(cls, response: requests.Response) -> Optional[Dict[str, Any]]:
+        """Return the "error" object of the x-hyperdb-status header, or None if absent or malformed."""
+        status = cls._status_header(response)
+        error = status.get("error") if status else None
+        return error if isinstance(error, dict) else None
+
+    @classmethod
+    def _query_id_from_status_header(cls, response: requests.Response) -> Optional[str]:
+        status = cls._status_header(response)
+        query_id = status.get("queryId") if status else None
+        return query_id if isinstance(query_id, str) and query_id else None
 
     @staticmethod
     def _param_entry(value: Any) -> Dict[str, Any]:
