@@ -5,6 +5,7 @@ These models represent the structure of API responses from the Query API endpoin
 """
 
 from dataclasses import dataclass
+from decimal import Decimal
 from typing import Any, List, Optional, Tuple
 
 import nanoarrow as na
@@ -189,6 +190,31 @@ def _arrow_type_to_datacloud_type(field: "na.Schema") -> Tuple[str, Optional[int
     return type_name, None, None
 
 
+def _decode_signed_decimal_column(column: "na.Array", scale: int, byte_width: int) -> List[Optional[Decimal]]:
+    """
+    Decode a decimal128/decimal256 column with the correct sign.
+
+    nanoarrow 0.9.0 decodes the little-endian two's-complement value of a
+    decimal as an unsigned integer, so -123.45 comes back as a huge positive
+    number. The bytes in the Arrow buffer are correct, so read them directly
+    as signed integers and let nanoarrow decide only which slots are NULL.
+    A result with several record batches is a chunked array, so each chunk
+    is decoded on its own.
+    """
+    values: List[Optional[Decimal]] = []
+    for chunk in column.iter_chunks():
+        data = bytes(chunk.buffer(1))
+        for i, decoded in enumerate(chunk.to_pylist()):
+            if decoded is None:
+                values.append(None)
+                continue
+            start = (chunk.offset + i) * byte_width
+            unscaled = int.from_bytes(data[start : start + byte_width], "little", signed=True)
+            # The string constructor is exact; scaleb() would round to the 28-digit decimal context.
+            values.append(Decimal(f"{unscaled}E{-scale}"))
+    return values
+
+
 @dataclass
 class ColumnMetadata:
     """
@@ -325,6 +351,12 @@ class QueryResponse:
 
         metadata = [ColumnMetadata.from_arrow_field(field) for field in schema.fields]
         rows = [list(row) for row in array.iter_tuples()]
+        for index, field in enumerate(schema.fields):
+            if field.type in (na.Type.DECIMAL128, na.Type.DECIMAL256):
+                byte_width = 16 if field.type == na.Type.DECIMAL128 else 32
+                column = _decode_signed_decimal_column(array.child(index), field.scale, byte_width)
+                for row, value in zip(rows, column):
+                    row[index] = value
 
         return cls(
             data=rows,
