@@ -10,6 +10,7 @@ import re
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
+from .exceptions import ProgrammingError
 from .metadata import DataCloudTable, Field
 
 
@@ -180,6 +181,26 @@ def get_table_metadata_pg(
     return tables[0]
 
 
+def _resolve_relkind(table_type: str) -> str:
+    """
+    Map a table type name (e.g. "VIEW") or a raw pg relkind letter (e.g. "v")
+    to a relkind letter.
+
+    Raises:
+        ProgrammingError: If the value is neither a known table type nor a known relkind.
+    """
+    if isinstance(table_type, str):
+        relkind = TABLE_TYPE_TO_RELKIND.get(table_type.upper())
+        if relkind is not None:
+            return relkind
+        if table_type in TABLE_TYPE_TO_RELKIND.values():
+            return table_type
+    raise ProgrammingError(
+        f"Unknown table type {table_type!r}; expected one of {sorted(TABLE_TYPE_TO_RELKIND)} "
+        f"or a relkind in {sorted(TABLE_TYPE_TO_RELKIND.values())}"
+    )
+
+
 def _build_tables_query(
     schema_pattern: Optional[str],
     table_name_pattern: Optional[str],
@@ -207,10 +228,10 @@ def _build_tables_query(
         params["table_name_pattern"] = table_name_pattern
 
     if table_types:
-        # Convert table type names to relkind values
-        relkinds = [TABLE_TYPE_TO_RELKIND.get(tt.upper(), tt) for tt in table_types]
-        # Build IN clause manually since we can't use list parameters easily
-        relkind_list = ", ".join([f"'{rk}'" for rk in relkinds])
+        # relkind values are inlined into the SQL, so every entry must resolve
+        # to one of the known one-letter relkinds; anything else is rejected
+        # instead of being formatted into the statement.
+        relkind_list = ", ".join(f"'{_resolve_relkind(tt)}'" for tt in table_types)
         sql += f" AND c.relkind IN ({relkind_list})"
 
     sql += " ORDER BY n.nspname, c.relname"
