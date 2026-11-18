@@ -335,7 +335,6 @@ class DataCloudQueryClient:
         self,
         sql: str,
         parameters: Optional[Dict[str, Any]] = None,
-        row_limit: int = 1000000,
         settings: Optional[Dict[str, str]] = None,
     ) -> QueryResponse:
         """
@@ -344,7 +343,6 @@ class DataCloudQueryClient:
         Args:
             sql: SQL query string
             parameters: Named parameters dict (e.g., {"status": "Active"})
-            row_limit: Maximum rows to return (passed as queryRowLimit)
             settings: Per-call query settings (e.g. {"time_zone": "UTC"}), merged
                 over the connection-level defaults; per-call wins on collision
 
@@ -364,7 +362,6 @@ class DataCloudQueryClient:
         request_body = {
             "sql": sql,
             "transferMode": "ADAPTIVE",
-            "queryRowLimit": row_limit,
         }
 
         if sql_params:
