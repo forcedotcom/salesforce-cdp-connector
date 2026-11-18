@@ -9,7 +9,7 @@ import pytest
 from salesforce_datacloud_connector.api.client import DataCloudQueryClient
 from salesforce_datacloud_connector.api.models import ColumnMetadata, QueryResponse, QueryStatus
 from salesforce_datacloud_connector.cursor import Cursor
-from salesforce_datacloud_connector.exceptions import InterfaceError, NotSupportedError
+from salesforce_datacloud_connector.exceptions import DataError, InterfaceError, NotSupportedError
 
 
 def create_mock_client():
@@ -776,3 +776,33 @@ def test_get_query_status_after_close_raises():
 
     with pytest.raises(InterfaceError):
         cursor.get_query_status()
+
+
+@pytest.mark.parametrize(
+    "column_type, value",
+    [
+        ("date", "99999-01-01"),
+        ("date", "2026-13-45"),
+        ("timestamp", "not a timestamp"),
+        ("timestamptz", "9999999999-01-01T00:00:00Z"),
+        ("integer", "twelve"),
+        ("double", "x"),
+    ],
+)
+def test_fetch_with_undecodable_value_raises_data_error(column_type, value):
+    """A value that cannot be converted to its column type surfaces as DataError, not ValueError/OverflowError."""
+    client = create_mock_client()
+    cursor = Cursor(client)
+    client.execute_query.return_value = QueryResponse(
+        data=[[value]],
+        metadata=[ColumnMetadata(name="c", type=column_type)],
+        returned_rows=1,
+        status=QueryStatus(
+            query_id="q1", completion_status="ResultsProduced", progress=1.0, row_count=1, chunk_count=1
+        ),
+    )
+
+    cursor.execute("SELECT c FROM t")
+
+    with pytest.raises(DataError):
+        cursor.fetchall()

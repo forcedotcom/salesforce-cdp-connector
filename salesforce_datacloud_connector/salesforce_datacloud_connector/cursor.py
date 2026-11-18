@@ -8,7 +8,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from .api.client import DataCloudQueryClient
 from .api.models import ColumnMetadata, QueryStatus
-from .exceptions import InterfaceError, NotSupportedError
+from .exceptions import DataError, InterfaceError, NotSupportedError
 from .types import build_description_tuple, convert_datacloud_value
 
 
@@ -138,7 +138,10 @@ class Cursor:
         for i, value in enumerate(row):
             if i < len(self._metadata):
                 col = self._metadata[i]
-                converted_value = convert_datacloud_value(value, col.type, col.precision, col.scale)
+                try:
+                    converted_value = convert_datacloud_value(value, col.type, col.precision, col.scale)
+                except ValueError as e:
+                    raise DataError(f"Column {col.name!r}: {e}") from e
                 converted.append(converted_value)
             else:
                 converted.append(value)

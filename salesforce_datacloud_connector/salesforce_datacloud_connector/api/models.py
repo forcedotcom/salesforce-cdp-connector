@@ -10,7 +10,7 @@ from typing import Any, List, Optional, Tuple
 
 import nanoarrow as na
 
-from ..exceptions import NotSupportedError
+from ..exceptions import DataError, NotSupportedError
 
 
 @dataclass
@@ -350,7 +350,11 @@ class QueryResponse:
             array = stream.read_all()
 
         metadata = [ColumnMetadata.from_arrow_field(field) for field in schema.fields]
-        rows = [list(row) for row in array.iter_tuples()]
+        try:
+            rows = [list(row) for row in array.iter_tuples()]
+        except (OverflowError, ValueError) as e:
+            # e.g. a date or timestamp outside the range Python can represent
+            raise DataError(f"Cannot decode a result value: {e}") from e
         for index, field in enumerate(schema.fields):
             if field.type in (na.Type.DECIMAL128, na.Type.DECIMAL256):
                 byte_width = 16 if field.type == na.Type.DECIMAL128 else 32
