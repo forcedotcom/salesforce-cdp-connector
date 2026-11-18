@@ -4,14 +4,16 @@ Tests for Data Cloud Query API client.
 
 import json
 from decimal import Decimal
+from unittest.mock import patch
 
 import pyarrow as pa
 import pytest
+import requests
 import responses
 
 from salesforce_datacloud_connector.api.client import DataCloudQueryClient
 from salesforce_datacloud_connector.api.models import QueryStatus
-from salesforce_datacloud_connector.exceptions import OperationalError, ProgrammingError
+from salesforce_datacloud_connector.exceptions import DatabaseError, OperationalError, ProgrammingError
 
 from ._arrow_fixtures import build_arrow_ipc_bytes
 
@@ -645,38 +647,11 @@ def test_fetch_results_with_offset():
 
 @responses.activate
 def test_retry_on_500():
-    """Test automatic retry on 500 errors."""
-    # First two calls fail with 500, third succeeds
-    responses.add(
-        responses.POST,
-        "https://test.c360a.salesforce.com/api/v3/query",
-        json={"error": "Internal Server Error"},
-        status=500,
-    )
-    responses.add(
-        responses.POST,
-        "https://test.c360a.salesforce.com/api/v3/query",
-        json={"error": "Internal Server Error"},
-        status=500,
-    )
-    status_header = {
-        "queryId": "q1",
-        "completionStatus": "RESULTS_PRODUCED",
-        "progress": 1.0,
-        "rowCount": 0,
-        "chunkCount": 0,
-    }
-    responses.add(
-        responses.POST,
-        "https://test.c360a.salesforce.com/api/v3/query",
-        json={
-            "metadata": {"columns": []},
-            "data": [],
-            "returnedRows": 0,
-        },
-        headers={"x-hyperdb-status": json.dumps(status_header)},
-        status=200,
-    )
+    """Idempotent calls (here a status poll) are retried automatically on 500 errors."""
+    status_url = "https://test.c360a.salesforce.com/api/v3/query/q1"
+    for _ in range(2):
+        responses.add(responses.GET, status_url, json={"error": "Internal Server Error"}, status=500)
+    responses.add(responses.GET, status_url, json={"queryId": "q1", "completionStatus": "RESULTS_PRODUCED"}, status=200)
 
     client = DataCloudQueryClient(
         tenant_endpoint="https://test.c360a.salesforce.com",
@@ -685,8 +660,9 @@ def test_retry_on_500():
     )
 
     # Should succeed after retries
-    response = client.execute_query("SELECT 1")
-    assert response.status.query_id == "q1"
+    with patch("salesforce_datacloud_connector.api.client.time.sleep"):
+        status = client.get_query_status("q1")
+    assert status.query_id == "q1"
     assert len(responses.calls) == 3
 
 
@@ -1228,3 +1204,77 @@ def test_query_status_unknown_keys_ignored():
         }
     )
     assert status.is_complete()
+
+
+_QUERY_URL = "https://test.c360a.salesforce.com/api/v3/query"
+
+
+@pytest.mark.parametrize(
+    "failure",
+    [
+        requests.exceptions.ReadTimeout("Read timed out. (read timeout=30)"),
+        requests.exceptions.ConnectionError("connection reset"),
+        {"status": 503},
+        {"status": 429},
+    ],
+    ids=["read-timeout", "connection-error", "503", "429"],
+)
+def test_query_post_is_never_retried(failure):
+    """Each query POST creates a new query on the server, so a failed or timed-out POST must surface
+    the error instead of resubmitting the SQL."""
+    with responses.RequestsMock() as rsps, patch("salesforce_datacloud_connector.api.client.time.sleep") as sleep:
+        if isinstance(failure, Exception):
+            rsps.add(responses.POST, _QUERY_URL, body=failure)
+        else:
+            rsps.add(responses.POST, _QUERY_URL, json={"message": "busy"}, **failure)
+
+        with pytest.raises(DatabaseError):
+            _json_client().execute_query("SELECT 1")
+
+        assert len(rsps.calls) == 1
+        sleep.assert_not_called()
+
+
+def test_idempotent_get_is_still_retried_after_a_network_error():
+    status_url = f"{_QUERY_URL}/q1"
+    with responses.RequestsMock() as rsps, patch("salesforce_datacloud_connector.api.client.time.sleep"):
+        rsps.add(responses.GET, status_url, body=requests.exceptions.ConnectionError("reset"))
+        rsps.add(responses.GET, status_url, json={"queryId": "q1", "completionStatus": "RESULTS_PRODUCED"})
+
+        status = _json_client().get_query_status("q1")
+
+        assert status.query_id == "q1"
+        assert len(rsps.calls) == 2
+
+
+def test_query_post_still_retried_once_after_an_expired_token():
+    """A 401 is rejected before the query runs, so the single refresh-and-resend stays safe."""
+    refreshed = []
+    client = DataCloudQueryClient(
+        tenant_endpoint="https://test.c360a.salesforce.com",
+        auth_token_getter=mock_token_getter,
+        output_format="json",
+        on_unauthorized=lambda: refreshed.append(True),
+    )
+    status_header = {"queryId": "q1", "completionStatus": "RESULTS_PRODUCED", "rowCount": 0, "chunkCount": 1}
+    with responses.RequestsMock() as rsps:
+        rsps.add(responses.POST, _QUERY_URL, json={"message": "expired"}, status=401)
+        rsps.add(
+            responses.POST,
+            _QUERY_URL,
+            json={"metadata": {"columns": []}, "data": [], "returnedRows": 0},
+            headers={"x-hyperdb-status": json.dumps(status_header)},
+        )
+
+        client.execute_query("SELECT 1")
+
+        assert len(rsps.calls) == 2
+    assert refreshed == [True]
+
+
+def _json_client():
+    return DataCloudQueryClient(
+        tenant_endpoint="https://test.c360a.salesforce.com",
+        auth_token_getter=mock_token_getter,
+        output_format="json",
+    )

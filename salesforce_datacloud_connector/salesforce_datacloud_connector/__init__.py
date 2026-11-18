@@ -93,6 +93,7 @@ def connect(
     output_format: str = "arrow",
     cdp_token: Optional[str] = None,
     tenant_endpoint: Optional[str] = None,
+    timeout: float = HttpOptions.DEFAULT_TIMEOUT_SECONDS,
 ) -> Connection:
     """
     Create a connection to Salesforce Data Cloud.
@@ -133,6 +134,13 @@ def connect(
             wire format negotiated with off-core Query v3. Arrow is the
             recommended default; "json" remains available as an opt-in
             fallback.
+        timeout: Per-request HTTP timeout in seconds, applied to every call the
+            connection makes (login, token exchange, query submission, status
+            polls and row fetches). Default 300 (5 minutes). The server may
+            hold the query request for about a minute before answering, so keep
+            this well above that; raise it for slow networks or very large
+            results. A timeout is raised as OperationalError; the query is not
+            resubmitted.
 
 
     Returns:
@@ -140,7 +148,7 @@ def connect(
 
     Raises:
         ValueError: If required parameters are missing for the selected auth type,
-            or if output_format is not "arrow" or "json"
+            if output_format is not "arrow" or "json", or if timeout is not positive
         OperationalError: If authentication fails
 
     Examples:
@@ -179,8 +187,8 @@ def connect(
     if output_format not in ("arrow", "json"):
         raise ValueError(f"Invalid output_format: {output_format!r}. Must be 'arrow' or 'json'")
 
-    # One Session (30s timeout) shared by the OAuth, token-exchange and query calls.
-    http = HttpOptions()
+    # One Session (and one timeout) shared by the OAuth, token-exchange and query calls.
+    http = HttpOptions(timeout=timeout)
 
     # A pre-minted CDP token needs no authenticator or token exchange.
     if auth_type == "cdp_token":

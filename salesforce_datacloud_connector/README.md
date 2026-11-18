@@ -346,6 +346,25 @@ cursor.execute("SELECT ...", settings={"time_zone": "America/Los_Angeles"})
 See the [Hyper connection settings reference](https://tableau.github.io/hyper-db/docs/hyper-api/connection#connection-settings)
 for available keys. Values must be strings.
 
+### Request timeout
+
+Every HTTP call the connection makes (login, token exchange, query submission,
+status polls, row fetches) uses one timeout, 300 seconds (5 minutes) by default.
+The server can hold the query request for about a minute before answering, so
+keep the value well above that. Raise it for slow networks or very large
+results:
+
+```python
+conn = sfdc.connect(
+    ...,
+    timeout=600,  # seconds
+)
+```
+
+A timeout raises `OperationalError`. The query submission is never retried
+automatically, because each attempt would start another query on the server;
+idempotent calls (token requests, status polls, row fetches) are retried.
+
 ### Cursor array size
 
 ```python
