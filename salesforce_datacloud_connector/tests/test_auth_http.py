@@ -81,6 +81,60 @@ def test_transient_status_retried_with_exponential_backoff(sleeps, status):
     assert [c.args[0] for c in sleeps.call_args_list] == [1.0, 2.0]
 
 
+RETRY_YOUR_REQUEST = {"error": "unknown_error", "error_description": "retry your request"}
+
+
+@responses.activate
+def test_400_retry_your_request_is_retried_with_backoff(sleeps):
+    responses.post(TOKEN_URL, status=400, json=RETRY_YOUR_REQUEST)
+    responses.post(TOKEN_URL, status=400, json=RETRY_YOUR_REQUEST)
+    responses.post(TOKEN_URL, json=OK_BODY)
+    assert _password_auth().get_oauth_token() == "tok"
+    assert len(responses.calls) == 3
+    assert [c.args[0] for c in sleeps.call_args_list] == [1.0, 2.0]
+
+
+@responses.activate
+def test_persistent_400_retry_your_request_surfaces_as_operational_error(sleeps):
+    responses.post(TOKEN_URL, status=400, json=RETRY_YOUR_REQUEST)
+    with pytest.raises(OperationalError, match="unknown_error: retry your request") as exc:
+        _password_auth().get_oauth_token()
+    assert exc.value.http_status == 400
+    assert len(responses.calls) == 4  # 1 attempt + 3 retries
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        {"error": "invalid_grant", "error_description": "authentication failure"},
+        {"error": "invalid_client_id", "error_description": "client identifier invalid"},
+        {"error": "unknown_error"},
+    ],
+)
+@responses.activate
+def test_other_400_errors_are_still_not_retried(sleeps, body):
+    responses.post(TOKEN_URL, status=400, json=body)
+    with pytest.raises(OperationalError):
+        _password_auth().get_oauth_token()
+    assert len(responses.calls) == 1
+    sleeps.assert_not_called()
+
+
+@responses.activate
+def test_exchanger_retries_400_retry_your_request(sleeps):
+    auth = Mock()
+    auth.get_oauth_token.return_value = "core"
+    auth.get_instance_url.return_value = "https://org.my.salesforce.com"
+
+    responses.post(EXCHANGE_URL, status=400, json=RETRY_YOUR_REQUEST)
+    responses.post(
+        EXCHANGE_URL,
+        json={"access_token": "cdp", "expires_in": 3600, "instance_url": "tenant.c360a.salesforce.com"},
+    )
+    assert DataCloudTokenExchanger(auth).get_cdp_token() == "cdp"
+    assert len(responses.calls) == 2
+
+
 @responses.activate
 def test_retries_exhausted_raises_last_error(sleeps):
     responses.post(TOKEN_URL, status=503, json={"error": "unavailable"})

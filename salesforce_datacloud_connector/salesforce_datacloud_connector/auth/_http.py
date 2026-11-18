@@ -50,10 +50,26 @@ class RetryConfig:
 DEFAULT_RETRY = RetryConfig()
 
 
-def _is_retriable_status(status_code: int) -> bool:
-    # 4xx other than 429 (400/401/403 ...) are credential/request problems
-    # that retrying cannot fix.
-    return status_code == 429 or 500 <= status_code < 600
+# Salesforce sometimes answers a token request with a transient
+# HTTP 400 {"error": "unknown_error", "error_description": "retry your request"}.
+_TRANSIENT_400_DESCRIPTION = "retry your request"
+
+
+def _is_retriable_response(response: requests.Response) -> bool:
+    status_code = response.status_code
+    if status_code == 429 or 500 <= status_code < 600:
+        return True
+    # Other 4xx (400/401/403 ...) are credential/request problems that
+    # retrying cannot fix, except for the transient 400 described above.
+    if status_code == 400:
+        try:
+            body = response.json()
+        except ValueError:
+            return False
+        if isinstance(body, dict):
+            description = body.get("error_description")
+            return isinstance(description, str) and _TRANSIENT_400_DESCRIPTION in description.lower()
+    return False
 
 
 def describe_error_response(response: requests.Response) -> str:
@@ -95,8 +111,9 @@ def post_with_retry(
     """
     POST to a token endpoint and return the parsed JSON body.
 
-    Retries 5xx, 429 and connection/timeout errors with exponential backoff.
-    Other 4xx responses fail immediately.
+    Retries 5xx, 429, connection/timeout errors and Salesforce's transient
+    400 "retry your request" with exponential backoff. Other 4xx responses
+    fail immediately.
 
     Args:
         url: Endpoint URL
@@ -130,7 +147,7 @@ def post_with_retry(
             except ValueError as e:
                 raise OperationalError(f"{description}: response was not valid JSON") from e
 
-        if _is_retriable_status(response.status_code) and attempt < retry.max_retries:
+        if _is_retriable_response(response) and attempt < retry.max_retries:
             attempt += 1
             time.sleep(retry.delay(attempt))
             continue
