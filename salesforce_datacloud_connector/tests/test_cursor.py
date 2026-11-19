@@ -2,6 +2,7 @@
 Tests for DB-API 2.0 Cursor.
 """
 
+from decimal import Decimal
 from unittest.mock import Mock
 
 import pytest
@@ -316,8 +317,8 @@ def test_async_execute_recovers_metadata_from_first_fetch_results():
     assert [d[0] for d in cursor.description] == ["name", "age"]
 
     row = cursor.fetchone()
-    assert row == ("Alice", 30)
-    assert isinstance(row[1], int)
+    assert row == ("Alice", Decimal("30"))
+    assert isinstance(row[1], Decimal)
 
 
 def test_execute_with_parameters():
