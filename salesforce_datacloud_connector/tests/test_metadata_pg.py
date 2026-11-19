@@ -14,6 +14,7 @@ from salesforce_datacloud_connector._metadata_pg import (
     _map_pg_type_to_datacloud,
     _create_field_from_row,
 )
+from salesforce_datacloud_connector.exceptions import ProgrammingError
 from salesforce_datacloud_connector.metadata import DataCloudTable
 
 
@@ -59,6 +60,27 @@ class TestBuildQueries:
         """Test building tables query with table types."""
         sql, params = _build_tables_query(None, None, ["TABLE", "VIEW"])
         assert "c.relkind IN ('r', 'v')" in sql
+
+    def test_build_tables_query_type_filter_accepts_names_and_relkinds(self):
+        """Type names are case-insensitive and raw pg relkind letters are accepted."""
+        sql, _ = _build_tables_query(None, None, ["table", "m", "Partitioned Table"])
+        assert "c.relkind IN ('r', 'm', 'p')" in sql
+
+    @pytest.mark.parametrize(
+        "bad_type",
+        [
+            "x') OR 1=1 --",
+            "TABLE'); DROP TABLE t; --",
+            "' UNION SELECT 1 --",
+            "rv",
+            "",
+            "SYNONYM",
+        ],
+    )
+    def test_build_tables_query_type_filter_rejects_unknown_values(self, bad_type):
+        """Values that are not a known table type or relkind must never reach the SQL."""
+        with pytest.raises(ProgrammingError):
+            _build_tables_query(None, None, ["TABLE", bad_type])
 
     def test_build_columns_query_no_filters(self):
         """Test building columns query without filters."""
