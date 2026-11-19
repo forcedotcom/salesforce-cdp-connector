@@ -27,6 +27,9 @@ from salesforce_datacloud_connector.exceptions import (
 from ._arrow_fixtures import build_arrow_ipc_bytes
 
 
+_EMPTY_ARROW = build_arrow_ipc_bytes([pa.field("x", pa.int32(), nullable=True)], [])
+
+
 def mock_token_getter():
     """Mock token getter for tests."""
     return "mock_token_12345"
@@ -48,16 +51,10 @@ def test_execute_query_sync_v3():
     responses.add(
         responses.POST,
         "https://test.c360a.salesforce.com/api/v3/query",
-        json={
-            "metadata": {
-                "columns": [
-                    {"name": "name", "type": "varchar", "nullable": True},
-                    {"name": "age", "type": "numeric", "nullable": False, "precision": 10, "scale": 0},
-                ]
-            },
-            "data": [["Alice", 30], ["Bob", 25]],
-            "returnedRows": 2,
-        },
+        body=build_arrow_ipc_bytes(
+            [pa.field("name", pa.string(), nullable=True), pa.field("age", pa.decimal128(10, 0), nullable=False)],
+            [("Alice", 30), ("Bob", 25)],
+        ),
         headers={"x-hyperdb-status": json.dumps(status_header)},
         status=200,
     )
@@ -65,13 +62,12 @@ def test_execute_query_sync_v3():
     client = DataCloudQueryClient(
         tenant_endpoint="https://test.c360a.salesforce.com",
         auth_token_getter=mock_token_getter,
-        output_format="json",
     )
 
     response = client.execute_query("SELECT name, age FROM users")
 
     assert len(response.data) == 2
-    assert response.data[0] == ["Alice", 30]
+    assert response.data[0] == ["Alice", 30]  # scale-0 numeric converts to int
     assert response.returned_rows == 2
     assert response.status.query_id == "MTAuMjQuMTIzLjE5NDo3NDg0_cb6991ab"
     assert response.status.is_complete()
@@ -91,15 +87,8 @@ def test_execute_query_async_v3():
     responses.add(
         responses.POST,
         "https://test.c360a.salesforce.com/api/v3/query",
-        json={
-            "metadata": {
-                "columns": [
-                    {"name": "name", "type": "varchar", "nullable": True},
-                ]
-            },
-            "data": None,
-            "returnedRows": 0,
-        },
+        # Still running: QS sends a zero-length Arrow body until results exist
+        body=b"",
         headers={"x-hyperdb-status": json.dumps(status_header)},
         status=200,
     )
@@ -107,7 +96,6 @@ def test_execute_query_async_v3():
     client = DataCloudQueryClient(
         tenant_endpoint="https://test.c360a.salesforce.com",
         auth_token_getter=mock_token_getter,
-        output_format="json",
     )
 
     response = client.execute_query("SELECT name FROM large_table")
@@ -145,7 +133,7 @@ def test_execute_query_with_parameters_v3():
         return (
             200,
             {"x-hyperdb-status": json.dumps(status_header)},
-            json.dumps({"metadata": {"columns": []}, "data": [], "returnedRows": 0}),
+            _EMPTY_ARROW,
         )
 
     responses.add_callback(
@@ -157,7 +145,6 @@ def test_execute_query_with_parameters_v3():
     client = DataCloudQueryClient(
         tenant_endpoint="https://test.c360a.salesforce.com",
         auth_token_getter=mock_token_getter,
-        output_format="json",
     )
 
     response = client.execute_query("SELECT * FROM users WHERE status = ?", parameters={"status": "Active"})
@@ -183,7 +170,7 @@ def test_execute_query_includes_settings_in_request_body():
         return (
             200,
             {"x-hyperdb-status": json.dumps(status_header)},
-            json.dumps({"metadata": {"columns": []}, "data": [], "returnedRows": 0}),
+            _EMPTY_ARROW,
         )
 
     responses.add_callback(
@@ -195,7 +182,6 @@ def test_execute_query_includes_settings_in_request_body():
     client = DataCloudQueryClient(
         tenant_endpoint="https://test.c360a.salesforce.com",
         auth_token_getter=mock_token_getter,
-        output_format="json",
     )
     client.execute_query("SELECT 1", settings={"time_zone": "UTC"})
 
@@ -219,7 +205,7 @@ def test_execute_query_merges_default_and_per_call_settings():
         return (
             200,
             {"x-hyperdb-status": json.dumps(status_header)},
-            json.dumps({"metadata": {"columns": []}, "data": [], "returnedRows": 0}),
+            _EMPTY_ARROW,
         )
 
     responses.add_callback(
@@ -232,7 +218,6 @@ def test_execute_query_merges_default_and_per_call_settings():
         tenant_endpoint="https://test.c360a.salesforce.com",
         auth_token_getter=mock_token_getter,
         query_settings={"time_zone": "UTC", "lc_time": "en_US"},
-        output_format="json",
     )
     client.execute_query("SELECT 1", settings={"time_zone": "America/New_York"})
 
@@ -272,7 +257,7 @@ def test_named_parameters_translated_to_qmark_v3():
         return (
             200,
             {"x-hyperdb-status": json.dumps(status_header)},
-            json.dumps({"metadata": {"columns": []}, "data": [], "returnedRows": 0}),
+            _EMPTY_ARROW,
         )
 
     responses.add_callback(
@@ -284,7 +269,6 @@ def test_named_parameters_translated_to_qmark_v3():
     client = DataCloudQueryClient(
         tenant_endpoint="https://test.c360a.salesforce.com",
         auth_token_getter=mock_token_getter,
-        output_format="json",
     )
     client.execute_query("SELECT :greeting AS msg", parameters={"greeting": "hi there"})
 
@@ -312,7 +296,7 @@ def test_named_parameter_reuse_translated_positionally_v3():
         return (
             200,
             {"x-hyperdb-status": json.dumps(status_header)},
-            json.dumps({"metadata": {"columns": []}, "data": [], "returnedRows": 0}),
+            _EMPTY_ARROW,
         )
 
     responses.add_callback(
@@ -324,7 +308,6 @@ def test_named_parameter_reuse_translated_positionally_v3():
     client = DataCloudQueryClient(
         tenant_endpoint="https://test.c360a.salesforce.com",
         auth_token_getter=mock_token_getter,
-        output_format="json",
     )
     client.execute_query("SELECT :n AS a, :n + 1 AS b", parameters={"n": 7})
 
@@ -353,7 +336,7 @@ def test_qmark_sql_passes_through_unchanged_v3():
         return (
             200,
             {"x-hyperdb-status": json.dumps(status_header)},
-            json.dumps({"metadata": {"columns": []}, "data": [], "returnedRows": 0}),
+            _EMPTY_ARROW,
         )
 
     responses.add_callback(
@@ -365,7 +348,6 @@ def test_qmark_sql_passes_through_unchanged_v3():
     client = DataCloudQueryClient(
         tenant_endpoint="https://test.c360a.salesforce.com",
         auth_token_getter=mock_token_getter,
-        output_format="json",
     )
     # dict order (a then b) defines positional order for qmark SQL
     client.execute_query(
@@ -395,7 +377,7 @@ def test_named_translation_leaves_type_casts_alone_v3():
         return (
             200,
             {"x-hyperdb-status": json.dumps(status_header)},
-            json.dumps({"metadata": {"columns": []}, "data": [], "returnedRows": 0}),
+            _EMPTY_ARROW,
         )
 
     responses.add_callback(
@@ -407,7 +389,6 @@ def test_named_translation_leaves_type_casts_alone_v3():
     client = DataCloudQueryClient(
         tenant_endpoint="https://test.c360a.salesforce.com",
         auth_token_getter=mock_token_getter,
-        output_format="json",
     )
     client.execute_query(
         "SELECT 'x'::regclass WHERE relkind = :kind",
@@ -436,7 +417,6 @@ def test_get_query_status_v3():
     client = DataCloudQueryClient(
         tenant_endpoint="https://test.c360a.salesforce.com",
         auth_token_getter=mock_token_getter,
-        output_format="json",
     )
 
     status = client.get_query_status("query123")
@@ -464,17 +444,9 @@ def test_fetch_results_v3():
         return (
             200,
             {},
-            json.dumps(
-                {
-                    "metadata": {
-                        "columns": [
-                            {"name": "id", "type": "numeric", "nullable": False},
-                            {"name": "value", "type": "varchar", "nullable": True},
-                        ]
-                    },
-                    "data": [[1, "first"], [2, "second"]],
-                    "returnedRows": 2,
-                }
+            build_arrow_ipc_bytes(
+                [pa.field("id", pa.decimal128(10, 0), nullable=False), pa.field("value", pa.string(), nullable=True)],
+                [(1, "first"), (2, "second")],
             ),
         )
 
@@ -487,7 +459,6 @@ def test_fetch_results_v3():
     client = DataCloudQueryClient(
         tenant_endpoint="https://test.c360a.salesforce.com",
         auth_token_getter=mock_token_getter,
-        output_format="json",
     )
 
     response = client.fetch_results(query_id="query123", offset=0, row_limit=1000000, omit_schema=False)
@@ -510,7 +481,6 @@ def test_cancel_query_v3():
     client = DataCloudQueryClient(
         tenant_endpoint="https://test.c360a.salesforce.com",
         auth_token_getter=mock_token_getter,
-        output_format="json",
     )
 
     # Should not raise any exception
@@ -538,7 +508,6 @@ def test_error_response_v3():
     client = DataCloudQueryClient(
         tenant_endpoint="https://test.c360a.salesforce.com",
         auth_token_getter=mock_token_getter,
-        output_format="json",
     )
 
     with pytest.raises(ProgrammingError) as exc_info:
@@ -586,7 +555,6 @@ def test_poll_until_complete_v3():
     client = DataCloudQueryClient(
         tenant_endpoint="https://test.c360a.salesforce.com",
         auth_token_getter=mock_token_getter,
-        output_format="json",
     )
 
     status = client.poll_until_complete("query123", poll_interval_ms=100, timeout_seconds=10)
@@ -621,7 +589,6 @@ def test_get_query_status_with_long_polling():
     client = DataCloudQueryClient(
         tenant_endpoint="https://test.c360a.salesforce.com",
         auth_token_getter=mock_token_getter,
-        output_format="json",
     )
 
     status = client.get_query_status("q1", wait_time_ms=5000)
@@ -638,7 +605,7 @@ def test_fetch_results_with_offset():
         assert "byteLimit=20971520" in request.url
         assert "rowLimit" not in request.url
         assert "omitSchema" not in request.url
-        return (200, {}, '{"data": [["row101"]], "returnedRows": 1}')
+        return (200, {}, build_arrow_ipc_bytes([pa.field("v", pa.string(), nullable=True)], [("row101",)]))
 
     responses.add_callback(
         responses.GET,
@@ -649,7 +616,6 @@ def test_fetch_results_with_offset():
     client = DataCloudQueryClient(
         tenant_endpoint="https://test.c360a.salesforce.com",
         auth_token_getter=mock_token_getter,
-        output_format="json",
     )
 
     response = client.fetch_results("query123", offset=100, row_limit=50)
@@ -667,7 +633,6 @@ def test_retry_on_500():
     client = DataCloudQueryClient(
         tenant_endpoint="https://test.c360a.salesforce.com",
         auth_token_getter=mock_token_getter,
-        output_format="json",
     )
 
     # Should succeed after retries
@@ -690,7 +655,6 @@ def test_no_retry_on_400():
     client = DataCloudQueryClient(
         tenant_endpoint="https://test.c360a.salesforce.com",
         auth_token_getter=mock_token_getter,
-        output_format="json",
     )
 
     with pytest.raises(ProgrammingError):
@@ -717,7 +681,7 @@ def test_workload_parameter():
         return (
             200,
             {"x-hyperdb-status": json.dumps(status_header)},
-            '{"metadata":{"columns":[]},"data":[],"returnedRows":0}',
+            _EMPTY_ARROW,
         )
 
     responses.add_callback(
@@ -730,7 +694,6 @@ def test_workload_parameter():
         tenant_endpoint="https://test.c360a.salesforce.com",
         auth_token_getter=mock_token_getter,
         workload="my_app",
-        output_format="json",
     )
 
     client.execute_query("SELECT 1")
@@ -753,7 +716,7 @@ def test_dataspace_header():
         return (
             200,
             {"x-hyperdb-status": json.dumps(status_header)},
-            '{"metadata":{"columns":[]},"data":[],"returnedRows":0}',
+            _EMPTY_ARROW,
         )
 
     responses.add_callback(
@@ -766,7 +729,6 @@ def test_dataspace_header():
         tenant_endpoint="https://test.c360a.salesforce.com",
         auth_token_getter=mock_token_getter,
         dataspace="custom_space",
-        output_format="json",
     )
 
     client.execute_query("SELECT 1")
@@ -792,7 +754,7 @@ def test_default_user_agent_header():
         return (
             200,
             {"x-hyperdb-status": json.dumps(status_header)},
-            '{"metadata":{"columns":[]},"data":[],"returnedRows":0}',
+            _EMPTY_ARROW,
         )
 
     responses.add_callback(
@@ -804,7 +766,6 @@ def test_default_user_agent_header():
     client = DataCloudQueryClient(
         tenant_endpoint="https://test.c360a.salesforce.com",
         auth_token_getter=mock_token_getter,
-        output_format="json",
     )
     client.execute_query("SELECT 1")
 
@@ -827,7 +788,7 @@ def test_user_agent_append():
         return (
             200,
             {"x-hyperdb-status": json.dumps(status_header)},
-            '{"metadata":{"columns":[]},"data":[],"returnedRows":0}',
+            _EMPTY_ARROW,
         )
 
     responses.add_callback(
@@ -840,7 +801,6 @@ def test_user_agent_append():
         tenant_endpoint="https://test.c360a.salesforce.com",
         auth_token_getter=mock_token_getter,
         user_agent="my-app/1.0",
-        output_format="json",
     )
     client.execute_query("SELECT 1")
 
@@ -863,7 +823,7 @@ def test_blank_user_agent_falls_back_to_default():
         return (
             200,
             {"x-hyperdb-status": json.dumps(status_header)},
-            '{"metadata":{"columns":[]},"data":[],"returnedRows":0}',
+            _EMPTY_ARROW,
         )
 
     responses.add_callback(
@@ -876,7 +836,6 @@ def test_blank_user_agent_falls_back_to_default():
         tenant_endpoint="https://test.c360a.salesforce.com",
         auth_token_getter=mock_token_getter,
         user_agent="   ",
-        output_format="json",
     )
     client.execute_query("SELECT 1")
 
@@ -898,7 +857,7 @@ def test_auth_token_included():
         return (
             200,
             {"x-hyperdb-status": json.dumps(status_header)},
-            '{"metadata":{"columns":[]},"data":[],"returnedRows":0}',
+            _EMPTY_ARROW,
         )
 
     responses.add_callback(
@@ -910,7 +869,6 @@ def test_auth_token_included():
     client = DataCloudQueryClient(
         tenant_endpoint="https://test.c360a.salesforce.com",
         auth_token_getter=mock_token_getter,
-        output_format="json",
     )
 
     client.execute_query("SELECT 1")
@@ -924,11 +882,7 @@ def test_execute_query_missing_status_header_raises_operational_error():
     responses.add(
         responses.POST,
         "https://test.c360a.salesforce.com/api/v3/query",
-        json={
-            "metadata": {"columns": [{"name": "name", "type": "varchar", "nullable": True}]},
-            "data": [["Alice"]],
-            "returnedRows": 1,
-        },
+        body=build_arrow_ipc_bytes([pa.field("name", pa.string(), nullable=True)], [("Alice",)]),
         # NOTE: deliberately no x-hyperdb-status header
         status=200,
     )
@@ -936,7 +890,6 @@ def test_execute_query_missing_status_header_raises_operational_error():
     client = DataCloudQueryClient(
         tenant_endpoint="https://test.c360a.salesforce.com",
         auth_token_getter=mock_token_getter,
-        output_format="json",
     )
 
     with pytest.raises(OperationalError, match="x-hyperdb-status"):
@@ -977,23 +930,13 @@ def test_query_status_from_empty_dict_does_not_throw():
 # --- Arrow output format (v3 Accept: application/vnd.apache.arrow.stream) ---
 
 
-def test_output_format_defaults_to_arrow():
-    """Arrow is the default output format unless json is explicitly requested."""
-    client = DataCloudQueryClient(
-        tenant_endpoint="https://test.c360a.salesforce.com",
-        auth_token_getter=mock_token_getter,
-    )
-    assert client._output_format == "arrow"
-    assert client._data_accept_header == "application/vnd.apache.arrow.stream"
-
-
-def test_output_format_invalid_raises_value_error():
-    """An unsupported output_format is rejected at construction time."""
-    with pytest.raises(ValueError, match="output_format"):
+def test_client_rejects_output_format_keyword():
+    """output_format was removed; the client always negotiates Arrow."""
+    with pytest.raises(TypeError, match="output_format"):
         DataCloudQueryClient(
             tenant_endpoint="https://test.c360a.salesforce.com",
             auth_token_getter=mock_token_getter,
-            output_format="xml",
+            output_format="arrow",
         )
 
 
@@ -1126,7 +1069,7 @@ def test_get_query_status_sends_json_accept_even_when_client_is_arrow():
         callback=check_request,
     )
 
-    # Default client output_format is "arrow"; get_query_status must still
+    # The client always requests Arrow for row data; get_query_status must still
     # negotiate JSON since the status body is never Arrow.
     client = DataCloudQueryClient(
         tenant_endpoint="https://test.c360a.salesforce.com",
@@ -1158,48 +1101,6 @@ def test_cancel_query_sends_json_accept_even_when_client_is_arrow():
         auth_token_getter=mock_token_getter,
     )
     client.cancel_query("query123")
-
-
-@responses.activate
-def test_execute_query_json_output_format_still_supported():
-    """output_format="json" remains available as an explicit opt-in: Accept
-    negotiates JSON and the body is parsed as JSON, not Arrow."""
-    status_header = {
-        "queryId": "q1",
-        "completionStatus": "RESULTS_PRODUCED",
-        "progress": 1.0,
-        "rowCount": 1,
-        "chunkCount": 1,
-    }
-
-    def check_request(request):
-        assert request.headers.get("Accept") == "application/json"
-        return (
-            200,
-            {"x-hyperdb-status": json.dumps(status_header)},
-            json.dumps(
-                {
-                    "metadata": {"columns": [{"name": "name", "type": "varchar", "nullable": True}]},
-                    "data": [["Alice"]],
-                    "returnedRows": 1,
-                }
-            ),
-        )
-
-    responses.add_callback(
-        responses.POST,
-        "https://test.c360a.salesforce.com/api/v3/query",
-        callback=check_request,
-    )
-
-    client = DataCloudQueryClient(
-        tenant_endpoint="https://test.c360a.salesforce.com",
-        auth_token_getter=mock_token_getter,
-        output_format="json",
-    )
-
-    response = client.execute_query("SELECT name FROM users")
-    assert response.data == [["Alice"]]
 
 
 def test_query_status_unknown_keys_ignored():
@@ -1240,7 +1141,7 @@ def test_query_post_is_never_retried(failure):
             rsps.add(responses.POST, _QUERY_URL, json={"message": "busy"}, **failure)
 
         with pytest.raises(DatabaseError):
-            _json_client().execute_query("SELECT 1")
+            _client().execute_query("SELECT 1")
 
         assert len(rsps.calls) == 1
         sleep.assert_not_called()
@@ -1252,7 +1153,7 @@ def test_idempotent_get_is_still_retried_after_a_network_error():
         rsps.add(responses.GET, status_url, body=requests.exceptions.ConnectionError("reset"))
         rsps.add(responses.GET, status_url, json={"queryId": "q1", "completionStatus": "RESULTS_PRODUCED"})
 
-        status = _json_client().get_query_status("q1")
+        status = _client().get_query_status("q1")
 
         assert status.query_id == "q1"
         assert len(rsps.calls) == 2
@@ -1264,7 +1165,6 @@ def test_query_post_still_retried_once_after_an_expired_token():
     client = DataCloudQueryClient(
         tenant_endpoint="https://test.c360a.salesforce.com",
         auth_token_getter=mock_token_getter,
-        output_format="json",
         on_unauthorized=lambda: refreshed.append(True),
     )
     status_header = {"queryId": "q1", "completionStatus": "RESULTS_PRODUCED", "rowCount": 0, "chunkCount": 1}
@@ -1273,7 +1173,7 @@ def test_query_post_still_retried_once_after_an_expired_token():
         rsps.add(
             responses.POST,
             _QUERY_URL,
-            json={"metadata": {"columns": []}, "data": [], "returnedRows": 0},
+            body=_EMPTY_ARROW,
             headers={"x-hyperdb-status": json.dumps(status_header)},
         )
 
@@ -1293,7 +1193,7 @@ def _capture_query_body(client, **kwargs):
         return (
             200,
             {"x-hyperdb-status": json.dumps(status_header)},
-            json.dumps({"metadata": {"columns": []}, "data": [], "returnedRows": 0}),
+            _EMPTY_ARROW,
         )
 
     with responses.RequestsMock() as rsps:
@@ -1318,7 +1218,7 @@ def _execute_expecting_error(status, headers=None, **response_kwargs):
     with responses.RequestsMock() as rsps, patch("salesforce_datacloud_connector.api.client.time.sleep"):
         rsps.add(responses.POST, _QUERY_URL, status=status, headers=headers or {}, **response_kwargs)
         with pytest.raises(Error) as excinfo:
-            _json_client().execute_query("SELECT * FROM no_such_table_xyz")
+            _client().execute_query("SELECT * FROM no_such_table_xyz")
     return excinfo.value
 
 
@@ -1377,7 +1277,7 @@ def test_error_header_applies_to_follow_up_calls():
     with responses.RequestsMock() as rsps:
         rsps.add(responses.GET, status_url, status=400, headers={"x-hyperdb-status": header}, body="")
         with pytest.raises(OperationalError) as excinfo:
-            _json_client().fetch_results("q1", offset=0)
+            _client().fetch_results("q1", offset=0)
 
     assert excinfo.value.sqlstate == "57014"
     assert "canceling statement" in str(excinfo.value)
@@ -1465,7 +1365,7 @@ def test_failed_row_fetch_does_not_say_failed_to_execute_query():
     with responses.RequestsMock() as rsps:
         rsps.add(responses.GET, f"{_QUERY_URL}/q1/rows", status=400, headers={"x-hyperdb-status": header}, body="")
         with pytest.raises(OperationalError) as excinfo:
-            _json_client().fetch_results("q1", offset=0)
+            _client().fetch_results("q1", offset=0)
 
     assert str(excinfo.value) == "Query request failed: canceling statement\nSQLSTATE: 57014\nQUERY-ID: q1"
 
@@ -1475,7 +1375,7 @@ def test_failed_cancel_does_not_say_failed_to_execute_query():
     with responses.RequestsMock() as rsps:
         rsps.add(responses.DELETE, f"{_QUERY_URL}/q1", status=404, headers={"x-hyperdb-status": header}, body="")
         with pytest.raises(ProgrammingError) as excinfo:
-            _json_client().cancel_query("q1")
+            _client().cancel_query("q1")
 
     assert str(excinfo.value).startswith("Query request failed: no such query")
 
@@ -1491,15 +1391,14 @@ def test_error_header_with_unknown_sqlstate_class_uses_http_status():
 _QUERY_URL = "https://test.c360a.salesforce.com/api/v3/query"
 
 
-def _json_client():
+def _client():
     return DataCloudQueryClient(
         tenant_endpoint="https://test.c360a.salesforce.com",
         auth_token_getter=mock_token_getter,
-        output_format="json",
     )
 
 
 def test_execute_query_never_sends_row_limit():
     """The request must not carry queryRowLimit, otherwise the server silently truncates large
     results at that number of rows."""
-    assert "queryRowLimit" not in _capture_query_body(_json_client())
+    assert "queryRowLimit" not in _capture_query_body(_client())

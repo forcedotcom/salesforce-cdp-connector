@@ -19,6 +19,11 @@ from salesforce_datacloud_connector.exceptions import NotSupportedError, Program
 from ._arrow_fixtures import build_arrow_ipc_bytes
 
 
+def _varchar_arrow(name, values):
+    """Arrow IPC body with a single nullable string column."""
+    return build_arrow_ipc_bytes([pa.field(name, pa.string(), nullable=True)], [(v,) for v in values])
+
+
 @responses.activate
 def test_end_to_end_sync_query():
     """Test complete flow with synchronous query."""
@@ -49,16 +54,10 @@ def test_end_to_end_sync_query():
     responses.add(
         responses.POST,
         "https://myorg.my.salesforce.com/api/v3/query",
-        json={
-            "metadata": {
-                "columns": [
-                    {"name": "name", "type": "varchar", "nullable": True},
-                    {"name": "age", "type": "numeric", "nullable": False, "scale": 0},
-                ]
-            },
-            "data": [["Alice", 30], ["Bob", 25], ["Charlie", 35]],
-            "returnedRows": 3,
-        },
+        body=build_arrow_ipc_bytes(
+            [pa.field("name", pa.string(), nullable=True), pa.field("age", pa.decimal128(10, 0), nullable=False)],
+            [("Alice", 30), ("Bob", 25), ("Charlie", 35)],
+        ),
         headers={"x-hyperdb-status": json.dumps(status_header)},
         status=200,
     )
@@ -71,7 +70,6 @@ def test_end_to_end_sync_query():
         password="password123",
         client_id="client_id",
         client_secret="client_secret",
-        output_format="json",
     )
 
     try:
@@ -98,12 +96,11 @@ def test_end_to_end_sync_query():
 
 @responses.activate
 def test_end_to_end_arrow_default_comprehensive_type_palette():
-    """Test the complete connect → execute → fetch flow using the Arrow
-    output format (the connector's default -- no output_format override),
+    """Test the complete connect → execute → fetch flow over Arrow
     across a broad type palette, confirming ColumnMetadata.type and
     convert_datacloud_value agree end to end for every type reachable only
     via Arrow's physical type system (smallint/oid/float4/float8/bytea/
-    interval), not just the JSON-wire names covered elsewhere."""
+    interval)."""
     responses.add(
         responses.POST,
         "https://test.salesforce.com/services/oauth2/token",
@@ -252,11 +249,7 @@ def test_end_to_end_with_context_managers():
     responses.add(
         responses.POST,
         "https://myorg.my.salesforce.com/api/v3/query",
-        json={
-            "metadata": {"columns": [{"name": "col", "type": "varchar", "nullable": True}]},
-            "data": [["Result"]],
-            "returnedRows": 1,
-        },
+        body=_varchar_arrow("col", ["Result"]),
         headers={"x-hyperdb-status": json.dumps(status_header)},
         status=200,
     )
@@ -268,7 +261,6 @@ def test_end_to_end_with_context_managers():
         password="password123",
         client_id="client_id",
         client_secret="client_secret",
-        output_format="json",
     ) as conn:
         with conn.cursor() as cursor:
             cursor.execute("SELECT 1")
@@ -310,11 +302,7 @@ def test_parameterized_query():
         return (
             200,
             {"x-hyperdb-status": json.dumps(status_header)},
-            """{
-                "metadata": {"columns": [{"name": "name", "type": "varchar", "nullable": true}]},
-                "data": [["Alice"]],
-                "returnedRows": 1
-            }""",
+            _varchar_arrow("name", ["Alice"]),
         )
 
     responses.add_callback(
@@ -330,7 +318,6 @@ def test_parameterized_query():
         password="password123",
         client_id="client_id",
         client_secret="client_secret",
-        output_format="json",
     ) as conn:
         cursor = conn.cursor()
         cursor.execute("SELECT name FROM users WHERE status = :status", {"status": "Active"})
@@ -368,11 +355,7 @@ def test_large_result_set_with_pagination():
     responses.add(
         responses.POST,
         "https://myorg.my.salesforce.com/api/v3/query",
-        json={
-            "metadata": {"columns": [{"name": "data", "type": "varchar", "nullable": True}]},
-            "data": [["Row1"], ["Row2"]],
-            "returnedRows": 2,
-        },
+        body=_varchar_arrow("data", ["Row1", "Row2"]),
         headers={"x-hyperdb-status": json.dumps(status_header)},
         status=200,
     )
@@ -381,7 +364,7 @@ def test_large_result_set_with_pagination():
     responses.add(
         responses.GET,
         "https://myorg.my.salesforce.com/api/v3/query/q1/rows",
-        json={"data": [["Row3"], ["Row4"]], "returnedRows": 2},
+        body=_varchar_arrow("data", ["Row3", "Row4"]),
         status=200,
     )
 
@@ -389,7 +372,7 @@ def test_large_result_set_with_pagination():
     responses.add(
         responses.GET,
         "https://myorg.my.salesforce.com/api/v3/query/q1/rows",
-        json={"data": [["Row5"]], "returnedRows": 1},
+        body=_varchar_arrow("data", ["Row5"]),
         status=200,
     )
 
@@ -400,7 +383,6 @@ def test_large_result_set_with_pagination():
         password="password123",
         client_id="client_id",
         client_secret="client_secret",
-        output_format="json",
     ) as conn:
         cursor = conn.cursor()
         cursor.execute("SELECT data FROM large_table")
@@ -442,11 +424,7 @@ def test_async_query_with_polling():
     responses.add(
         responses.POST,
         "https://myorg.my.salesforce.com/api/v3/query",
-        json={
-            "metadata": {"columns": [{"name": "result", "type": "varchar", "nullable": True}]},
-            "data": [],
-            "returnedRows": 0,
-        },
+        body=_varchar_arrow("result", []),
         headers={"x-hyperdb-status": json.dumps(initial_status_header)},
         status=200,
     )
@@ -471,7 +449,7 @@ def test_async_query_with_polling():
     responses.add(
         responses.GET,
         "https://myorg.my.salesforce.com/api/v3/query/q1/rows",
-        json={"data": [["Success"]], "returnedRows": 1},
+        body=_varchar_arrow("result", ["Success"]),
         status=200,
     )
 
@@ -482,7 +460,6 @@ def test_async_query_with_polling():
         password="password123",
         client_id="client_id",
         client_secret="client_secret",
-        output_format="json",
     ) as conn:
         cursor = conn.cursor()
         cursor.execute("SELECT * FROM large_dataset")
@@ -517,7 +494,6 @@ def test_unsupported_dml_operations():
         password="password123",
         client_id="client_id",
         client_secret="client_secret",
-        output_format="json",
     ) as conn:
         cursor = conn.cursor()
 
@@ -565,7 +541,6 @@ def test_sql_syntax_error():
         password="password123",
         client_id="client_id",
         client_secret="client_secret",
-        output_format="json",
     ) as conn:
         cursor = conn.cursor()
 
@@ -603,11 +578,7 @@ def test_cursor_iteration():
     responses.add(
         responses.POST,
         "https://myorg.my.salesforce.com/api/v3/query",
-        json={
-            "metadata": {"columns": [{"name": "name", "type": "varchar", "nullable": True}]},
-            "data": [["Alice"], ["Bob"], ["Charlie"]],
-            "returnedRows": 3,
-        },
+        body=_varchar_arrow("name", ["Alice", "Bob", "Charlie"]),
         headers={"x-hyperdb-status": json.dumps(status_header)},
         status=200,
     )
@@ -619,7 +590,6 @@ def test_cursor_iteration():
         password="password123",
         client_id="client_id",
         client_secret="client_secret",
-        output_format="json",
     ) as conn:
         cursor = conn.cursor()
         cursor.execute("SELECT name FROM users")
@@ -650,11 +620,7 @@ def test_jwt_authentication():
     responses.add(
         responses.POST,
         "https://myorg.my.salesforce.com/api/v3/query",
-        json={
-            "metadata": {"columns": [{"name": "col", "type": "varchar", "nullable": True}]},
-            "data": [["Test"]],
-            "returnedRows": 1,
-        },
+        body=_varchar_arrow("col", ["Test"]),
         headers={"x-hyperdb-status": json.dumps(status_header)},
         status=200,
     )
@@ -676,11 +642,7 @@ def test_jwt_authentication():
         rsps.add(
             responses.POST,
             "https://myorg.my.salesforce.com/api/v3/query",
-            json={
-                "metadata": {"columns": [{"name": "col", "type": "varchar", "nullable": True}]},
-                "data": [["Test"]],
-                "returnedRows": 1,
-            },
+            body=_varchar_arrow("col", ["Test"]),
             headers={"x-hyperdb-status": json.dumps(status_header)},
             status=200,
         )
@@ -694,7 +656,6 @@ def test_jwt_authentication():
                 username="test@example.com",
                 client_id="client_id",
                 jwt_private_key=TEST_RSA_PRIVATE_KEY_PEM,
-                output_format="json",
             )
 
             cursor = conn.cursor()
@@ -739,11 +700,7 @@ def test_refresh_token_authentication():
     responses.add(
         responses.POST,
         "https://myorg.my.salesforce.com/api/v3/query",
-        json={
-            "metadata": {"columns": [{"name": "col", "type": "varchar", "nullable": True}]},
-            "data": [["Test"]],
-            "returnedRows": 1,
-        },
+        body=_varchar_arrow("col", ["Test"]),
         headers={"x-hyperdb-status": json.dumps(status_header)},
         status=200,
     )
@@ -754,7 +711,6 @@ def test_refresh_token_authentication():
         client_id="client_id",
         client_secret="client_secret",
         refresh_token="refresh_token_xyz",
-        output_format="json",
     )
 
     cursor = conn.cursor()

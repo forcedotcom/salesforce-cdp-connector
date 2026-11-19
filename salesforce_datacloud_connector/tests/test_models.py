@@ -63,40 +63,6 @@ def test_query_status_recognizes_finished():
     assert status.is_complete()
 
 
-def test_column_metadata_from_dict_lowercase_types():
-    """Test that lowercase type names are preserved."""
-    data = {"name": "id__c", "type": "varchar", "nullable": False}
-
-    col = ColumnMetadata.from_dict(data)
-
-    assert col.name == "id__c"
-    assert col.type == "varchar"
-    assert col.nullable is False
-
-
-def test_query_response_from_dict_v3_shape():
-    """Test parsing v3 response shape with metadata.columns wrapper."""
-    data = {
-        "metadata": {
-            "columns": [
-                {"name": "id__c", "type": "varchar", "nullable": False},
-                {"name": "name__c", "type": "varchar", "nullable": True},
-            ]
-        },
-        "data": [["c1ce2a48-9d03-4eed-938d-f354db79c425", "Gowtham"]],
-        "returnedRows": 1,
-    }
-
-    response = QueryResponse.from_dict(data)
-
-    assert len(response.metadata) == 2
-    assert response.metadata[0].name == "id__c"
-    assert response.metadata[0].type == "varchar"
-    assert len(response.data) == 1
-    assert response.data[0] == ["c1ce2a48-9d03-4eed-938d-f354db79c425", "Gowtham"]
-    assert response.returned_rows == 1
-
-
 # --- Arrow output format (v3 Accept: application/vnd.apache.arrow.stream) ---
 
 
@@ -229,7 +195,7 @@ def test_column_metadata_from_arrow_field_interval_month_day_nano():
 
 
 def test_query_response_from_arrow_bytes_basic_round_trip():
-    """Test that an Arrow IPC stream round-trips to the same shape as from_dict()."""
+    """Test that an Arrow IPC stream round-trips to the expected shape."""
     fields = [
         pa.field("name", pa.string(), nullable=True),
         pa.field("age", pa.decimal128(10, 0), nullable=False),

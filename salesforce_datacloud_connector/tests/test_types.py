@@ -124,24 +124,10 @@ class TestConvertLowercaseV3Types:
         assert convert_datacloud_value(b"hello", "bytea") == b"hello"
         assert isinstance(convert_datacloud_value(b"hello", "bytea"), bytes)
 
-    def test_json_arrow_raw_string_is_parsed(self):
-        """The Arrow output format gives json columns as a raw JSON-encoded
-        string (confirmed live); parse it so callers see the same Python
-        value regardless of output format."""
-        result = convert_datacloud_value('{"a":1}', "json")
-        assert result == {"a": 1}
-
-    def test_json_already_parsed_dict_passes_through_unchanged(self):
-        """The JSON output format pre-parses json columns into native
-        dicts/lists already; str()-ing that would corrupt it into repr()."""
-        value = {"a": 1}
-        assert convert_datacloud_value(value, "json") is value
-
     def test_varchar_json_like_string_passes_through_unparsed(self):
         """Arrow has no distinct physical type for json columns -- they
         arrive tagged "varchar" like any other string column (see
-        models.py's _ARROW_TYPE_TO_DATACLOUD_TYPE comment), so the "json"
-        branch above is unreachable from the Arrow path. This locks in that
+        models.py's _ARROW_TYPE_TO_DATACLOUD_TYPE comment). This locks in that
         documented limitation: a json column's raw text comes through the
         "varchar" branch unparsed, not through json.loads()."""
         result = convert_datacloud_value('{"a":1}', "varchar")
