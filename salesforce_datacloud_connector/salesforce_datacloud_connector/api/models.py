@@ -151,6 +151,13 @@ _ARROW_TYPE_TO_DATACLOUD_TYPE = {
 }
 
 
+def _contains_decimal(field: "na.Schema") -> bool:
+    """True if a decimal type appears anywhere inside the field's nested children."""
+    return any(
+        child.type in (na.Type.DECIMAL128, na.Type.DECIMAL256) or _contains_decimal(child) for child in field.fields
+    )
+
+
 def _arrow_type_to_datacloud_type(field: "na.Schema") -> Tuple[str, Optional[int], Optional[int]]:
     """
     Map a nanoarrow field's Arrow type to the lowercase Data Cloud type
@@ -165,8 +172,8 @@ def _arrow_type_to_datacloud_type(field: "na.Schema") -> Tuple[str, Optional[int
 
     Raises:
         NotSupportedError: If the field's Arrow type has no Data Cloud
-            equivalent (e.g. STRUCT, LIST, MAP, BINARY, DURATION,
-            intervals, unions, dictionary-encoded columns).
+            equivalent (e.g. STRUCT, MAP, DURATION, unions, dictionary-encoded
+            columns, or a list with decimal elements).
     """
     arrow_type = field.type
 
@@ -179,6 +186,18 @@ def _arrow_type_to_datacloud_type(field: "na.Schema") -> Tuple[str, Optional[int
 
     if arrow_type in (na.Type.DECIMAL128, na.Type.DECIMAL256):
         return "numeric", field.precision, field.scale
+
+    if arrow_type in (na.Type.LIST, na.Type.LARGE_LIST):
+        # nanoarrow hands back a nested list as a plain Python list, but it
+        # decodes decimal elements as unsigned (see _decode_signed_decimal_column,
+        # which only fixes top-level columns). Refuse them rather than return
+        # wrong numbers.
+        if _contains_decimal(field):
+            raise NotSupportedError(
+                f"Arrow type {arrow_type!r} for column {field.name!r} holds decimal "
+                "elements, which the Data Cloud connector cannot decode reliably"
+            )
+        return "array", None, None
 
     type_name = _ARROW_TYPE_TO_DATACLOUD_TYPE.get(arrow_type)
     if type_name is None:

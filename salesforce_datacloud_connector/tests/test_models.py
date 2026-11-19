@@ -203,12 +203,37 @@ def test_column_metadata_from_arrow_field_timestamp_naive():
 
 
 def test_column_metadata_from_arrow_field_unsupported_type_raises():
-    """Test that an Arrow type with no Data Cloud equivalent (e.g. a list)
+    """Test that an Arrow type with no Data Cloud equivalent (e.g. a struct)
     raises NotSupportedError instead of silently falling back to varchar."""
-    field = nanoarrow_field_for(pa.field("tags", pa.list_(pa.string()), nullable=True))
+    field = nanoarrow_field_for(pa.field("s", pa.struct([pa.field("x", pa.int32())]), nullable=True))
 
     with pytest.raises(NotSupportedError, match="not supported"):
         ColumnMetadata.from_arrow_field(field)
+
+
+@pytest.mark.parametrize("arrow_type", [pa.list_(pa.int32()), pa.large_list(pa.string())])
+def test_column_metadata_from_arrow_field_list_maps_to_array(arrow_type):
+    col = ColumnMetadata.from_arrow_field(nanoarrow_field_for(pa.field("tags", arrow_type, nullable=True)))
+    assert col.type == "array"
+
+
+def test_column_metadata_from_arrow_field_list_of_decimal_raises():
+    """nanoarrow decodes nested decimals unsigned, so refuse them rather than return wrong values."""
+    field = nanoarrow_field_for(pa.field("d", pa.list_(pa.list_(pa.decimal128(10, 2))), nullable=True))
+
+    with pytest.raises(NotSupportedError, match="decimal"):
+        ColumnMetadata.from_arrow_field(field)
+
+
+def test_query_response_from_arrow_bytes_list_column():
+    raw = build_arrow_ipc_bytes(
+        [pa.field("a", pa.list_(pa.int32()), nullable=True)],
+        [([1, 2],), (None,), ([],), ([3, None],)],
+    )
+    response = QueryResponse.from_arrow_bytes(raw)
+
+    assert response.metadata[0].type == "array"
+    assert response.data == [[[1, 2]], [None], [[]], [[3, None]]]
 
 
 def test_column_metadata_from_arrow_field_float_and_double():
