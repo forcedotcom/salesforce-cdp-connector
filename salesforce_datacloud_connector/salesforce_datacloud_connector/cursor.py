@@ -4,11 +4,12 @@ DB-API 2.0 Cursor implementation for Salesforce Data Cloud.
 The Cursor class executes queries and manages result retrieval.
 """
 
+import threading
 from typing import Any, Dict, List, Optional, Tuple
 
 from .api.client import DataCloudQueryClient
 from .api.models import ColumnMetadata, QueryStatus
-from .exceptions import DataError, InterfaceError, NotSupportedError
+from .exceptions import DataError, InterfaceError, NotSupportedError, OperationalError
 from .types import build_description_tuple, convert_datacloud_value
 
 
@@ -44,6 +45,13 @@ class Cursor:
         # and by the polling loop. Returned by get_query_status() without an
         # extra HTTP call.
         self._query_status: Optional[QueryStatus] = None
+        # cancel() is called from another thread while execute() is blocked in
+        # the query POST. The lock guards the three fields below, which let
+        # cancel() ask an in-flight execute() to stop once the server has
+        # returned a query id.
+        self._cancel_lock = threading.Lock()
+        self._executing: bool = False
+        self._cancel_requested: bool = False
 
     @property
     def description(self) -> Optional[List[Tuple]]:
@@ -199,11 +207,34 @@ class Cursor:
         ):
             raise NotSupportedError("V1 driver is read-only. DML/DDL operations are not supported.")
 
-        # Execute query
+        with self._cancel_lock:
+            self._executing = True
+            self._cancel_requested = False
+        try:
+            return self._run_query(operation, parameters, settings)
+        finally:
+            with self._cancel_lock:
+                self._executing = False
+                self._cancel_requested = False
+
+    def _run_query(
+        self, operation: str, parameters: Optional[Dict[str, Any]], settings: Optional[Dict[str, Any]]
+    ) -> "Cursor":
         response = self._client.execute_query(operation, parameters, settings=settings)
 
-        # Store metadata and query ID
-        self._query_id = response.status.query_id
+        # The server returns the query id only when the POST returns, so a
+        # cancel() issued before that point could not reach the query. Honour
+        # it now: stop the query if it is still running and fail the execute().
+        with self._cancel_lock:
+            self._query_id = response.status.query_id
+            cancelled = self._cancel_requested
+        if cancelled:
+            if not response.status.is_complete():
+                self._client.cancel_query(self._query_id)
+            self._reset_result()
+            raise OperationalError("Query was cancelled")
+
+        # Store metadata
         self._metadata = response.metadata
         self._total_row_count = response.status.row_count
         self._query_status = response.status
@@ -351,13 +382,27 @@ class Cursor:
 
         This is an extension to DB-API 2.0.
 
+        May be called from another thread while execute() is running. The
+        server only reports a query id when the initial request returns (up to
+        about 60 seconds for a query that is still running), so a cancel()
+        issued earlier is recorded and applied as soon as the id is known:
+        the query is cancelled on the server and execute() raises
+        OperationalError. A query that finishes within that window is
+        therefore cancelled locally only (its result is discarded).
+
         Raises:
             InterfaceError: If no query has been executed or cursor is closed
         """
         self._check_closed()
-        self._check_query_executed()
+        with self._cancel_lock:
+            query_id = self._query_id
+            if query_id is None and self._executing:
+                self._cancel_requested = True
+                return
+        if query_id is None:
+            raise InterfaceError("No query has been executed")
 
-        self._client.cancel_query(self._query_id)
+        self._client.cancel_query(query_id)
 
     def get_query_status(self) -> Optional[QueryStatus]:
         """

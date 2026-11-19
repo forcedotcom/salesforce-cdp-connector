@@ -4,12 +4,20 @@ Tests for DB-API 2.0 Cursor.
 
 from unittest.mock import Mock
 
+import threading
+
 import pytest
 
 from salesforce_datacloud_connector.api.client import DataCloudQueryClient
 from salesforce_datacloud_connector.api.models import ColumnMetadata, QueryResponse, QueryStatus
 from salesforce_datacloud_connector.cursor import Cursor
-from salesforce_datacloud_connector.exceptions import DataError, InterfaceError, NotSupportedError, ProgrammingError
+from salesforce_datacloud_connector.exceptions import (
+    DataError,
+    InterfaceError,
+    NotSupportedError,
+    OperationalError,
+    ProgrammingError,
+)
 
 
 def create_mock_client():
@@ -648,6 +656,102 @@ def test_cancel_query():
     cursor.cancel()
 
     client.cancel_query.assert_called_once_with("q1")
+
+
+def _slow_response(state):
+    return QueryResponse(
+        data=[],
+        metadata=[],
+        returned_rows=0,
+        status=QueryStatus(query_id="q9", completion_status=state, progress=0.0, row_count=0, chunk_count=0),
+    )
+
+
+def test_cancel_during_execute_cancels_the_query_once_its_id_is_known():
+    """cancel() before the POST returns is applied when the query id arrives."""
+    client = create_mock_client()
+    cursor = Cursor(client)
+    posted = threading.Event()
+    release = threading.Event()
+
+    def blocking_post(*args, **kwargs):
+        posted.set()
+        assert release.wait(5)
+        return _slow_response("Running")
+
+    client.execute_query.side_effect = blocking_post
+    errors = []
+
+    def run():
+        try:
+            cursor.execute("SELECT slow")
+        except Exception as exc:  # noqa: BLE001
+            errors.append(exc)
+
+    thread = threading.Thread(target=run)
+    thread.start()
+    assert posted.wait(5)
+    cursor.cancel()  # no query id yet: must not raise
+    client.cancel_query.assert_not_called()
+    release.set()
+    thread.join(5)
+
+    assert len(errors) == 1 and isinstance(errors[0], OperationalError)
+    client.cancel_query.assert_called_once_with("q9")
+    client.poll_until_complete.assert_not_called()
+    assert cursor.description is None
+    with pytest.raises(InterfaceError):
+        cursor.fetchone()
+
+
+def test_cancel_during_execute_of_a_finished_query_discards_the_result():
+    client = create_mock_client()
+    cursor = Cursor(client)
+
+    def post(*args, **kwargs):
+        cursor.cancel()
+        return _slow_response("ResultsProduced")
+
+    client.execute_query.side_effect = post
+    with pytest.raises(OperationalError):
+        cursor.execute("SELECT 1")
+    client.cancel_query.assert_not_called()
+    assert cursor.rowcount == -1
+
+
+def test_cancel_request_does_not_leak_into_the_next_execute():
+    client = create_mock_client()
+    cursor = Cursor(client)
+    calls = []
+
+    def post(*args, **kwargs):
+        if not calls:
+            cursor.cancel()
+        calls.append(1)
+        return _slow_response("ResultsProduced")
+
+    client.execute_query.side_effect = post
+    with pytest.raises(OperationalError):
+        cursor.execute("SELECT 1")
+    cursor.execute("SELECT 1")
+    assert cursor.rowcount == 0
+
+
+def test_cancel_with_nothing_executing_raises():
+    cursor = Cursor(create_mock_client())
+    with pytest.raises(InterfaceError):
+        cursor.cancel()
+
+
+def test_cancel_after_failed_execute_raises():
+    client = create_mock_client()
+    cursor = Cursor(client)
+    client.execute_query.side_effect = ProgrammingError("syntax error")
+    with pytest.raises(ProgrammingError):
+        cursor.execute("SELEC 1")
+    with pytest.raises(InterfaceError):
+        cursor.cancel()
+    client.cancel_query.assert_not_called()
 
 
 def test_context_manager():
