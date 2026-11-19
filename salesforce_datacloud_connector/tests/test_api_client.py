@@ -298,8 +298,8 @@ def test_named_parameter_reuse_translated_positionally_v3():
         body = json.loads(request.body.decode("utf-8"))
         assert body["sql"] == "SELECT ? AS a, ? + 1 AS b"
         assert body["parameters"] == [
-            {"type": "numeric", "value": 7},
-            {"type": "numeric", "value": 7},
+            {"type": "bigint", "value": "7"},
+            {"type": "bigint", "value": "7"},
         ]
 
         status_header = {

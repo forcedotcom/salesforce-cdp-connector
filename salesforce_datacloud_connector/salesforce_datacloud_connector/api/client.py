@@ -23,8 +23,8 @@ import requests
 
 from ..exceptions import OperationalError, ProgrammingError, map_http_error_to_exception
 from ..http_options import HttpOptions
-from ..types import infer_sql_parameter_type
 from .models import QueryResponse, QueryStatus
+from .param_encoding import encode_parameter
 
 # Matches a :name placeholder while ignoring PostgreSQL ::type casts. The
 # negative lookbehind (?<![:\w]) rejects the second colon of "::" and any
@@ -323,8 +323,8 @@ class DataCloudQueryClient:
 
     @staticmethod
     def _param_entry(value: Any) -> Dict[str, Any]:
-        """Build one v3 parameter entry: {"type": <lowercase>, "value": ...}."""
-        return {"type": infer_sql_parameter_type(value).lower(), "value": value}
+        """Build one v3 parameter entry (JSON-string value + server type name)."""
+        return encode_parameter(value)
 
     def _bind_parameters(self, sql: str, params: Optional[Dict[str, Any]]) -> Tuple[str, List[Dict[str, Any]]]:
         """
