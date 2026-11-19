@@ -4,6 +4,7 @@ DB-API 2.0 Connection implementation for Salesforce Data Cloud.
 The Connection class manages the database connection and creates cursors.
 """
 
+import weakref
 from typing import Dict, List, Optional
 
 from .api.client import DataCloudQueryClient
@@ -55,6 +56,8 @@ class Connection:
         self._workload = workload
         self._user_agent = user_agent
         self._closed = False
+        # Cursors handed out by this connection, so close() can invalidate them.
+        self._cursors: "weakref.WeakSet[Cursor]" = weakref.WeakSet()
 
         # Create API client with v3 parameters
         self._client = DataCloudQueryClient(
@@ -85,19 +88,29 @@ class Connection:
             InterfaceError: If connection is closed
         """
         self._check_closed()
-        return Cursor(self._client)
+        cursor = Cursor(self._client)
+        self._cursors.add(cursor)
+        return cursor
 
     def close(self):
         """
         Close the connection.
 
-        The connection is unusable after this call.
-        Any outstanding cursors should not be used after closing the connection.
+        The connection is unusable after this call. All cursors created from it
+        are closed too (using them raises InterfaceError), and the HTTP session
+        the driver created for this connection is closed so its sockets are
+        released. A session supplied by the caller through HttpOptions is left
+        open because the caller owns it.
         """
-        if not self._closed:
-            # Note: In V1, we don't explicitly close cursors.
-            # Users should close cursors manually if needed.
-            self._closed = True
+        if self._closed:
+            return
+        self._closed = True
+        for cursor in list(self._cursors):
+            cursor.close()
+        self._cursors.clear()
+        http = self._client._http
+        if http.owns_session:
+            http.session.close()
 
     def commit(self):
         """

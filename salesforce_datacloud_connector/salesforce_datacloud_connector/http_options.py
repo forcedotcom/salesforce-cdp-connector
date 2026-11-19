@@ -48,6 +48,8 @@ class HttpOptions:
             )
 
         self.timeout = timeout
+        # A session the driver created is the driver's to close; a caller's is not.
+        self.owns_session = session is None
         if session is None:
             session = requests.Session()
             if verify is not None:

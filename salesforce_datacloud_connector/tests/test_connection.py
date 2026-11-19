@@ -496,3 +496,54 @@ def test_connect_wires_sf_cli():
         assert conn._client.tenant_endpoint == "https://tenant.c360a.salesforce.com"
 
         conn.close()
+
+
+def test_close_invalidates_existing_cursors():
+    """After conn.close(), cursors created earlier raise InterfaceError instead of running queries."""
+    conn = Connection(create_mock_token_provider())
+    cursor = conn.cursor()
+
+    conn.close()
+
+    with patch.object(conn._client, "execute_query") as execute_query:
+        with pytest.raises(InterfaceError):
+            cursor.execute("SELECT 1")
+        execute_query.assert_not_called()
+    with pytest.raises(InterfaceError):
+        cursor.fetchall()
+
+
+def test_close_closes_http_session_it_created():
+    """The driver-created requests.Session is closed with the connection, releasing its sockets."""
+    conn = Connection(create_mock_token_provider())
+    session = conn._client._http.session
+
+    with patch.object(session, "close", wraps=session.close) as close:
+        conn.close()
+        conn.close()  # idempotent
+    close.assert_called_once_with()
+
+
+def test_close_leaves_caller_supplied_session_open():
+    """A session passed in by the caller belongs to the caller and may be shared; it is not closed."""
+    import requests
+
+    from salesforce_datacloud_connector.http_options import HttpOptions
+
+    session = requests.Session()
+    conn = Connection(create_mock_token_provider(), http=HttpOptions(session=session))
+
+    with patch.object(session, "close") as close:
+        conn.close()
+    close.assert_not_called()
+
+
+def test_closed_cursors_are_not_kept_alive_by_the_connection():
+    """The connection must not hold strong references to cursors that went out of scope."""
+    import gc
+
+    conn = Connection(create_mock_token_provider())
+    conn.cursor()
+    gc.collect()
+    assert len(conn._cursors) == 0
+    conn.close()
