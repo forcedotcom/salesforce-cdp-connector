@@ -76,6 +76,18 @@ class Cursor:
         if self._query_id is None:
             raise InterfaceError("No query has been executed")
 
+    def _reset_result(self):
+        """Forget the previous result so a new or failed execute() cannot expose it."""
+        self._query_id = None
+        self._query_status = None
+        self._metadata = []
+        self._description = None
+        self._buffer = []
+        self._buffer_offset = 0
+        self._total_row_count = 0
+        self._fetched_rows = 0
+        self._rowcount = -1
+
     def _build_description(self):
         """Build cursor.description from metadata."""
         if not self._metadata:
@@ -175,7 +187,9 @@ class Cursor:
         """
         self._check_closed()
 
-        self._rowcount = -1
+        # Reset before anything can fail, so a rejected or failed execute()
+        # leaves no readable result and an async result is fetched from offset 0.
+        self._reset_result()
 
         # Check for unsupported operations (V1 is read-only)
         operation_upper = operation.strip().upper()
