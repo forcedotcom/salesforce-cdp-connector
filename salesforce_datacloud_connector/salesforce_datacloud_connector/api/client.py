@@ -216,7 +216,7 @@ class DataCloudQueryClient:
 
                 # Don't retry client errors (4xx except 429)
                 if 400 <= response.status_code < 500 and response.status_code != 429:
-                    self._raise_api_error(response)
+                    self._raise_api_error(response, method)
 
                 # Retry on 5xx and 429 (rate limiting), but never the query POST
                 if method != "POST" and retry_count < self.MAX_RETRIES:
@@ -233,7 +233,7 @@ class DataCloudQueryClient:
                     )
 
                 # All retries exhausted
-                self._raise_api_error(response)
+                self._raise_api_error(response, method)
 
             return response
 
@@ -252,7 +252,7 @@ class DataCloudQueryClient:
                 )
             raise OperationalError(f"Request failed: {e}") from e
 
-    def _raise_api_error(self, response: requests.Response):
+    def _raise_api_error(self, response: requests.Response, method: str):
         """
         Raise appropriate exception for API error response.
 
@@ -264,20 +264,32 @@ class DataCloudQueryClient:
             SQLSTATE: <sqlstate>
             QUERY-ID: <query id>        (only when the server sent one)
 
+        The "Failed to execute query" prefix is only for the query POST; the
+        status, row fetch and cancel calls use "Query request failed".
+
         A response without a usable header gets the generic SQLSTATE HY000 and
         the HTTP status line as its message; the HTTP status still selects the
         exception class.
         """
         header_error = self._error_from_status_header(response)
         if header_error:
-            sqlstate = header_error.get("error") or _GENERIC_SQLSTATE
-            reason = header_error.get("message") or f"HTTP {response.status_code} {response.reason}"
-            details = header_error.get("details") or None
+            sqlstate = header_error.get("error")
+            if not isinstance(sqlstate, str) or not sqlstate:
+                sqlstate = _GENERIC_SQLSTATE
+            message_text = header_error.get("message")
+            reason = (
+                message_text
+                if isinstance(message_text, str) and message_text
+                else f"HTTP {response.status_code} {response.reason}"
+            )
+            details = header_error.get("details")
+            details = details if isinstance(details, dict) and details else None
         else:
             sqlstate, details = _GENERIC_SQLSTATE, None
             reason = f"HTTP {response.status_code} {response.reason}"
 
-        message = f"Failed to execute query: {reason}\nSQLSTATE: {sqlstate}"
+        action = "Failed to execute query" if method == "POST" else "Query request failed"
+        message = f"{action}: {reason}\nSQLSTATE: {sqlstate}"
         query_id = self._query_id_from_status_header(response)
         if query_id:
             message += f"\nQUERY-ID: {query_id}"

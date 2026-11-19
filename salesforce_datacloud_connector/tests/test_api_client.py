@@ -1427,6 +1427,53 @@ def test_error_without_header_still_maps_the_http_status(status, expected_class)
     assert err.sqlstate == "HY000"
 
 
+@pytest.mark.parametrize("sqlstate", [42, 4.2, ["42P01"], {"code": "42P01"}, "", None, True])
+def test_error_header_with_non_string_sqlstate_is_generic(sqlstate):
+    """A malformed SQLSTATE must not crash the mapping with a TypeError."""
+    header = json.dumps({"error": {"error": sqlstate, "message": "boom"}})
+    err = _execute_expecting_error(400, headers={"x-hyperdb-status": header}, body="")
+
+    assert type(err) is ProgrammingError  # the HTTP status picks the class
+    assert err.sqlstate == "HY000"
+    assert str(err) == "Failed to execute query: boom\nSQLSTATE: HY000"
+
+
+@pytest.mark.parametrize("message", [42, ["x"], {"a": 1}, "", None])
+def test_error_header_with_non_string_message_uses_the_http_status_line(message):
+    header = json.dumps({"error": {"error": "42601", "message": message}})
+    err = _execute_expecting_error(400, headers={"x-hyperdb-status": header}, body="")
+
+    assert str(err) == "Failed to execute query: HTTP 400 Bad Request\nSQLSTATE: 42601"
+
+
+@pytest.mark.parametrize("details", ["text", ["x"], 7, {}])
+def test_error_header_with_non_dict_details_has_no_details(details):
+    header = json.dumps({"error": {"error": "42601", "message": "boom", "details": details}})
+    err = _execute_expecting_error(400, headers={"x-hyperdb-status": header}, body="")
+
+    assert err.details is None
+
+
+def test_failed_row_fetch_does_not_say_failed_to_execute_query():
+    header = _error_status_header("57014", "canceling statement", queryId="q1")
+    with responses.RequestsMock() as rsps:
+        rsps.add(responses.GET, f"{_QUERY_URL}/q1/rows", status=400, headers={"x-hyperdb-status": header}, body="")
+        with pytest.raises(OperationalError) as excinfo:
+            _json_client().fetch_results("q1", offset=0)
+
+    assert str(excinfo.value) == "Query request failed: canceling statement\nSQLSTATE: 57014\nQUERY-ID: q1"
+
+
+def test_failed_cancel_does_not_say_failed_to_execute_query():
+    header = _error_status_header("42P01", "no such query")
+    with responses.RequestsMock() as rsps:
+        rsps.add(responses.DELETE, f"{_QUERY_URL}/q1", status=404, headers={"x-hyperdb-status": header}, body="")
+        with pytest.raises(ProgrammingError) as excinfo:
+            _json_client().cancel_query("q1")
+
+    assert str(excinfo.value).startswith("Query request failed: no such query")
+
+
 def test_error_header_with_unknown_sqlstate_class_uses_http_status():
     err = _execute_expecting_error(500, headers={"x-hyperdb-status": _error_status_header("ZZ999", "odd")}, body="")
 
