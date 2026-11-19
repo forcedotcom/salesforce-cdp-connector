@@ -1272,9 +1272,34 @@ def test_query_post_still_retried_once_after_an_expired_token():
     assert refreshed == [True]
 
 
+def _capture_query_body(client, **kwargs):
+    """Run execute_query against a mocked POST and return the JSON body that was sent."""
+    sent = {}
+
+    def check_request(request):
+        sent.update(json.loads(request.body.decode("utf-8")))
+        status_header = {"queryId": "q1", "completionStatus": "RESULTS_PRODUCED", "rowCount": 0, "chunkCount": 1}
+        return (
+            200,
+            {"x-hyperdb-status": json.dumps(status_header)},
+            json.dumps({"metadata": {"columns": []}, "data": [], "returnedRows": 0}),
+        )
+
+    with responses.RequestsMock() as rsps:
+        rsps.add_callback(responses.POST, "https://test.c360a.salesforce.com/api/v3/query", callback=check_request)
+        client.execute_query("SELECT 1", **kwargs)
+    return sent
+
+
 def _json_client():
     return DataCloudQueryClient(
         tenant_endpoint="https://test.c360a.salesforce.com",
         auth_token_getter=mock_token_getter,
         output_format="json",
     )
+
+
+def test_execute_query_never_sends_row_limit():
+    """The request must not carry queryRowLimit, otherwise the server silently truncates large
+    results at that number of rows."""
+    assert "queryRowLimit" not in _capture_query_body(_json_client())
