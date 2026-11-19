@@ -596,6 +596,22 @@ def test_get_query_status_with_long_polling():
 
 
 @responses.activate
+def test_fetch_results_empty_body_returns_an_empty_response():
+    """Under ADAPTIVE transfer mode a chunk with no Arrow part yet comes back 200 with a zero-length body."""
+    responses.add(responses.GET, "https://test.c360a.salesforce.com/api/v3/query/query123/rows", body=b"", status=200)
+
+    client = DataCloudQueryClient(
+        tenant_endpoint="https://test.c360a.salesforce.com",
+        auth_token_getter=mock_token_getter,
+    )
+    response = client.fetch_results("query123", offset=0)
+
+    assert response.data == []
+    assert response.metadata == []
+    assert response.returned_rows == 0
+
+
+@responses.activate
 def test_fetch_results_with_offset():
     """Test fetching results with pagination offset."""
 
