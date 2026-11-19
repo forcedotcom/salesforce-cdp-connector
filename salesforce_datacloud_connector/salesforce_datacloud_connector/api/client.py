@@ -41,7 +41,9 @@ class DataCloudQueryClient:
     Client for interacting with Salesforce Data Cloud Query API.
 
     Handles query execution, status polling, result fetching, and cancellation.
-    Includes automatic retry logic for transient failures.
+    Includes automatic retry logic for transient failures of idempotent calls.
+    The query-creating POST is never retried: each attempt would start a new
+    query on the server.
     """
 
     # Retry configuration
@@ -161,6 +163,12 @@ class DataCloudQueryClient:
         """
         Make an HTTP request with retry logic.
 
+        Network errors, 5xx and 429 responses are retried up to MAX_RETRIES
+        times, except for POST: the only POST is the query submission, which
+        creates a query on the server, so retrying it would run the SQL again
+        (and the earlier attempts could not be cancelled). A 401 is the
+        exception, since the request was rejected before it ran.
+
         Args:
             method: HTTP method (GET, POST, DELETE)
             url: Request URL
@@ -206,8 +214,8 @@ class DataCloudQueryClient:
                 if 400 <= response.status_code < 500 and response.status_code != 429:
                     self._raise_api_error(response)
 
-                # Retry on 5xx and 429 (rate limiting)
-                if retry_count < self.MAX_RETRIES:
+                # Retry on 5xx and 429 (rate limiting), but never the query POST
+                if method != "POST" and retry_count < self.MAX_RETRIES:
                     time.sleep(self.RETRY_WAIT_SECONDS)
 
                     return self._make_request(
@@ -226,8 +234,8 @@ class DataCloudQueryClient:
             return response
 
         except requests.exceptions.RequestException as e:
-            # Network errors - retry if possible
-            if retry_count < self.MAX_RETRIES:
+            # Network errors - retry if possible (never the query POST)
+            if method != "POST" and retry_count < self.MAX_RETRIES:
                 time.sleep(self.RETRY_WAIT_SECONDS)
                 return self._make_request(
                     method,

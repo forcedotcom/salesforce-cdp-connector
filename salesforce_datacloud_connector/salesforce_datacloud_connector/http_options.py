@@ -19,7 +19,9 @@ class HttpOptions:
     variables (HTTPS_PROXY etc.) are honoured by default through requests.
     """
 
-    DEFAULT_TIMEOUT_SECONDS = 30
+    # The server may hold the query POST for about a minute (its adaptive window)
+    # before answering, so the default must stay well above that.
+    DEFAULT_TIMEOUT_SECONDS = 300
 
     def __init__(
         self,
@@ -30,7 +32,7 @@ class HttpOptions:
     ):
         """
         Args:
-            timeout: Per-request timeout in seconds (default: 30)
+            timeout: Per-request timeout in seconds (default: 300)
             verify: TLS verification: True/False, or a path to a CA bundle
             proxies: Proxy mapping, e.g. {"https": "http://proxy:3128"}
             session: Caller-supplied Session to use instead of a new one.
@@ -40,7 +42,7 @@ class HttpOptions:
             ValueError: If timeout is not positive, or session is combined
                 with verify/proxies
         """
-        if timeout is None or timeout <= 0:
+        if timeout is None or not timeout > 0:  # "not >" also rejects NaN
             raise ValueError("timeout must be > 0")
         if session is not None and (verify is not None or proxies is not None):
             raise ValueError(

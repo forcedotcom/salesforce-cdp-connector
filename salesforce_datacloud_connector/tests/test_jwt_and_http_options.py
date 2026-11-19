@@ -160,6 +160,12 @@ def test_http_options_builds_session_from_verify_and_proxies():
     assert http.session.proxies["https"] == "http://proxy:3128"
 
 
+@pytest.mark.parametrize("bad", [0, -1, float("nan")])
+def test_http_options_rejects_non_positive_and_nan_timeouts(bad):
+    with pytest.raises(ValueError, match="timeout"):
+        HttpOptions(timeout=bad)
+
+
 def test_http_options_validation():
     with pytest.raises(ValueError, match="timeout"):
         HttpOptions(timeout=0)
@@ -196,6 +202,35 @@ def test_connect_shares_one_http_session_across_auth_and_query():
 
 
 def test_connect_does_not_expose_http_or_retry_knobs():
-    for name in ("auth_retry", "timeout", "verify", "proxies", "session"):
+    for name in ("auth_retry", "verify", "proxies", "session"):
         with pytest.raises(TypeError):
             sdc.connect(auth_type="sf_cli", **{name: object()})
+
+
+def test_default_timeout_is_five_minutes():
+    """The server may hold the query POST for about a minute before answering, so the client must
+    wait well beyond that by default."""
+    assert HttpOptions.DEFAULT_TIMEOUT_SECONDS == 300
+    assert HttpOptions().timeout == 300
+
+
+@responses.activate
+def test_connect_timeout_option_reaches_the_query_client():
+    responses.post(
+        "https://login.salesforce.com/services/oauth2/token",
+        json={"access_token": "core", "instance_url": "https://org.my.salesforce.com", "expires_in": 7200},
+    )
+    responses.post(
+        "https://org.my.salesforce.com/services/a360/token",
+        json={"access_token": "cdp", "expires_in": 3600, "instance_url": "tenant.c360a.salesforce.com"},
+    )
+
+    conn = sdc.connect(auth_type="client_credentials", client_id="cid", client_secret="s", timeout=90)
+
+    assert conn._client._http.timeout == 90
+    assert conn._token_provider._http.timeout == 90
+
+
+def test_connect_rejects_non_positive_timeout():
+    with pytest.raises(ValueError, match="timeout"):
+        sdc.connect(auth_type="cdp_token", cdp_token="t", tenant_endpoint="tenant.c360a.salesforce.com", timeout=0)
