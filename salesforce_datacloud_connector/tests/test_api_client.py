@@ -1383,6 +1383,12 @@ def test_error_header_applies_to_follow_up_calls():
     assert "canceling statement" in str(excinfo.value)
 
 
+def test_unmapped_http_status_falls_back_to_database_error():
+    err = _execute_expecting_error(418, headers={}, body="")
+
+    assert type(err) is DatabaseError
+
+
 def test_error_message_follows_the_jdbc_layout():
     header = _error_status_header("42P01", 'table "t" does not exist [TraceId: abc]', queryId="q1")
     err = _execute_expecting_error(400, headers={"x-hyperdb-status": header}, body="")
