@@ -349,3 +349,54 @@ def test_query_response_from_arrow_bytes_attaches_supplied_status():
 
     assert response.status is status
     assert response.status.query_id == "q1"
+
+
+@pytest.mark.parametrize(
+    "arrow_type, value",
+    [
+        (pa.decimal128(38, 0), Decimal("99999999999999999999999999999999999999")),
+        (pa.decimal128(38, 0), Decimal("-99999999999999999999999999999999999999")),
+        (pa.decimal128(38, 4), Decimal("1234567890123456789012345678.9012")),
+        (pa.decimal128(38, 10), Decimal("-9999999999999999999999999999.9999999999")),
+        (pa.decimal256(60, 2), Decimal("-123456789012345678901234567890123456789012345678.99")),
+    ],
+)
+def test_query_response_from_arrow_bytes_wide_decimals_are_exact(arrow_type, value):
+    """Values wider than the default 28-digit decimal context must not be rounded."""
+    raw = build_arrow_ipc_bytes([pa.field("d", arrow_type)], [(value,)])
+
+    assert QueryResponse.from_arrow_bytes(raw).data == [[value]]
+
+
+@pytest.mark.parametrize("arrow_type", [pa.decimal128(10, 2), pa.decimal128(38, 0), pa.decimal256(40, 2)])
+def test_query_response_from_arrow_bytes_negative_decimals_keep_their_sign(arrow_type):
+    """Negative decimals are stored as two's-complement integers; they must not
+    be decoded as huge positive numbers."""
+    scale = arrow_type.scale
+    values = [Decimal("-123.45"), Decimal("-1"), Decimal("0"), Decimal("7.5"), None, Decimal("-0.01")]
+    if scale == 0:
+        values = [Decimal("-12345"), Decimal("-1"), Decimal("0"), Decimal("7"), None, Decimal("-99999999999999999999")]
+    raw = build_arrow_ipc_bytes([pa.field("d", arrow_type)], [(v,) for v in values])
+
+    response = QueryResponse.from_arrow_bytes(raw)
+
+    assert [row[0] for row in response.data] == values
+
+
+def test_query_response_from_arrow_bytes_negative_decimals_across_batches_and_columns():
+    """Decimal columns are fixed up alongside other columns and across record batches."""
+    fields = [pa.field("id", pa.int64()), pa.field("d", pa.decimal128(12, 3)), pa.field("s", pa.string())]
+    batches = [
+        [(1, Decimal("-1.500"), "a"), (2, Decimal("2.250"), "b")],
+        [(3, None, "c"), (4, Decimal("-0.001"), "d")],
+    ]
+    raw = build_arrow_ipc_bytes_multi_batch(fields, batches)
+
+    response = QueryResponse.from_arrow_bytes(raw)
+
+    assert response.data == [
+        [1, Decimal("-1.500"), "a"],
+        [2, Decimal("2.250"), "b"],
+        [3, None, "c"],
+        [4, Decimal("-0.001"), "d"],
+    ]
