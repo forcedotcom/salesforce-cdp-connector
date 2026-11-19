@@ -69,3 +69,52 @@ def test_values_are_ignored_when_the_sql_has_no_placeholder_in_code():
     new_sql, entries = bind("SELECT ':name' /* :name */ -- ?\n", {"name": "x"})
     assert new_sql == "SELECT ':name' /* :name */ -- ?\n"
     assert entries == []
+
+
+def test_bare_dollar_is_not_a_quote():
+    new_sql, entries = bind("SELECT '$' || $1, :v", {"v": "x"})
+    assert new_sql == "SELECT '$' || $1, ?"
+    assert len(entries) == 1
+
+
+@pytest.mark.parametrize("sql", ["SELECT :a, ?", "SELECT ?, :a", "SELECT ? /* :b */, :a"])
+def test_mixing_named_and_positional_placeholders_is_rejected(sql):
+    with pytest.raises(ProgrammingError, match="Cannot mix"):
+        bind(sql, {"a": 1})
+
+
+def test_question_mark_in_a_string_or_comment_is_not_a_positional_placeholder():
+    new_sql, entries = bind("SELECT '?' AS q, :a /* ? */ -- ?\n", {"a": 1})
+    assert new_sql == "SELECT '?' AS q, ? /* ? */ -- ?\n"
+    assert len(entries) == 1
+
+
+@pytest.mark.parametrize("params", [{}, None])
+def test_named_placeholder_without_any_values_is_reported(params):
+    with pytest.raises(ProgrammingError, match=":v"):
+        bind("SELECT :v", params)
+
+
+@pytest.mark.parametrize("params", [{}, None])
+@pytest.mark.parametrize("sql", ["SELECT 1", "SELECT ':v', 7::int, '12:30'::time /* :v */", "SELECT a[1:2] FROM t"])
+def test_no_values_and_no_placeholder_in_code_leaves_the_sql_alone(sql, params):
+    assert bind(sql, params) == (sql, [])
+
+
+@pytest.mark.parametrize(
+    "sql, params, expected_sql, bound",
+    [
+        ("SELECT 'a\\' AS s, :v", {"v": 1}, "SELECT 'a\\' AS s, ?", 1),  # standard string: backslash is not an escape
+        ("SELECT e'a\\':v', :v", {"v": 1}, "SELECT e'a\\':v', ?", 1),
+        ("SELECT U&'\\0041:v', :v", {"v": 1}, "SELECT U&'\\0041:v', ?", 1),
+        ("SELECT $é$ :v $é$, :v", {"v": 1}, "SELECT $é$ :v $é$, ?", 1),
+        ("SELECT 5--:v\n, :v", {"v": 1}, "SELECT 5--:v\n, ?", 1),
+        ("SELECT 1 - -:v", {"v": 1}, "SELECT 1 - -?", 1),
+        ("SELECT :naïve, :1", {"naïve": 1, "1": 2}, "SELECT ?, ?", 2),
+        ("SELECT :a-b", {"a": 5, "a-b": 9}, "SELECT ?", 1),
+    ],
+)
+def test_lexing_cases_checked_against_hyper(sql, params, expected_sql, bound):
+    new_sql, entries = bind(sql, params)
+    assert new_sql == expected_sql
+    assert len(entries) == bound
