@@ -7,7 +7,7 @@ import pyarrow as pa
 import pytest
 
 from salesforce_datacloud_connector.api.models import QueryStatus, ColumnMetadata, QueryResponse
-from salesforce_datacloud_connector.exceptions import NotSupportedError
+from salesforce_datacloud_connector.exceptions import DataError, Error, NotSupportedError
 
 from ._arrow_fixtures import build_arrow_ipc_bytes, build_arrow_ipc_bytes_multi_batch, nanoarrow_field_for
 
@@ -400,3 +400,33 @@ def test_query_response_from_arrow_bytes_negative_decimals_across_batches_and_co
         [3, None, "c"],
         [4, Decimal("-0.001"), "d"],
     ]
+
+
+def _ipc_bytes_with_raw_values(arrow_type, storage_type, value):
+    """Arrow IPC bytes whose single value is written as raw storage, so it can be out of range for Python."""
+    import io
+
+    schema = pa.schema([pa.field("d", arrow_type)])
+    array = pa.array([value], storage_type).view(arrow_type)
+    sink = io.BytesIO()
+    with pa.ipc.new_stream(sink, schema) as writer:
+        writer.write_batch(pa.record_batch([array], schema=schema))
+    return sink.getvalue()
+
+
+@pytest.mark.parametrize(
+    "arrow_type, storage_type, value",
+    [
+        (pa.date32(), pa.int32(), 3_000_000),  # far beyond year 9999
+        (pa.timestamp("us"), pa.int64(), 2**62),
+        (pa.timestamp("us", "UTC"), pa.int64(), -(2**62)),
+    ],
+)
+def test_query_response_from_arrow_bytes_out_of_range_value_is_data_error(arrow_type, storage_type, value):
+    """A date/timestamp Python cannot represent raises DataError (an Error), not a bare OverflowError."""
+    raw = _ipc_bytes_with_raw_values(arrow_type, storage_type, value)
+
+    with pytest.raises(DataError) as exc:
+        QueryResponse.from_arrow_bytes(raw)
+
+    assert isinstance(exc.value, Error)

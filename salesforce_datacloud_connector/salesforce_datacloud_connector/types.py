@@ -222,7 +222,7 @@ def convert_datacloud_value(
         else:
             return value
 
-    except (ValueError, TypeError) as e:
+    except (ValueError, TypeError, OverflowError) as e:
         raise ValueError(f"Cannot convert value {value!r} to type {datacloud_type}: {e}") from e
 
 
