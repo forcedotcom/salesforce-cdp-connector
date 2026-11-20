@@ -89,8 +89,7 @@ class QueryStatus:
 # toV3SpecType: bool, smallint, integer, bigint, oid, float4, float8, numeric,
 # varchar, bytea, json, date, time, timestamp, timestamptz, interval), not an
 # invented vocabulary -- so cursor.description and ColumnMetadata.type agree
-# whether a query ran with output_format="arrow" or "json". Confirmed against
-# a live Data Cloud org: CAST(... AS SMALLINT)/INTEGER/BIGINT/OID physically
+# for every query. Confirmed against a live Data Cloud org: CAST(... AS SMALLINT)/INTEGER/BIGINT/OID physically
 # arrive as Arrow INT16/INT32/INT64/UINT32 respectively (oid is the only
 # unsigned Hyper type -- it is not a wider bigint), REAL/DOUBLE PRECISION as
 # Arrow FLOAT/DOUBLE, and INTERVAL as INTERVAL_MONTH_DAY_NANO.
@@ -104,9 +103,8 @@ class QueryStatus:
 #
 # char and json are indistinguishable from varchar at the physical Arrow
 # level (both arrive as a plain STRING/LARGE_STRING column; QS does not emit
-# a distinct Arrow type for them), so a char(1)/json column read via Arrow
-# reports "varchar" rather than "char"/"json" -- a transport limitation, not
-# a bug: output_format="json" is required to see those two distinctly.
+# a distinct Arrow type for them), so a char(1)/json column reports "varchar"
+# rather than "char"/"json" -- a transport limitation, not a bug.
 _ARROW_TYPE_TO_DATACLOUD_TYPE = {
     na.Type.BOOL: "bool",
     # Hyper's narrowest signed integer type is smallint (16-bit); INT8/UINT8
@@ -235,28 +233,9 @@ class ColumnMetadata:
     scale: Optional[int] = None
 
     @classmethod
-    def from_dict(cls, data: dict) -> "ColumnMetadata":
-        """
-        Create ColumnMetadata from API response dictionary.
-
-        Args:
-            data: Metadata dictionary from API response
-
-        Returns:
-            ColumnMetadata instance
-        """
-        return cls(
-            name=data.get("name", ""),
-            type=data.get("type", "Varchar"),
-            nullable=data.get("nullable", True),
-            precision=data.get("precision"),
-            scale=data.get("scale"),
-        )
-
-    @classmethod
     def from_arrow_field(cls, field: "na.Schema") -> "ColumnMetadata":
         """
-        Create ColumnMetadata from a nanoarrow field schema (v3 Arrow output format).
+        Create ColumnMetadata from a nanoarrow field schema.
 
         Args:
             field: Per-column Schema object from the IPC stream's struct schema
@@ -292,50 +271,15 @@ class QueryResponse:
     status: Optional[QueryStatus] = None
 
     @classmethod
-    def from_dict(cls, data: dict) -> "QueryResponse":
-        """
-        Create QueryResponse from API response dictionary.
-
-        Args:
-            data: Response dictionary from API (v3: metadata.columns wrapper)
-
-        Returns:
-            QueryResponse instance
-        """
-        # V3 wraps columns in metadata.columns, v2 had flat metadata array
-        metadata_raw = data.get("metadata", {})
-        if isinstance(metadata_raw, dict):
-            # V3 shape: {"metadata": {"columns": [...]}}
-            columns = metadata_raw.get("columns", [])
-        else:
-            # V2 shape: {"metadata": [...]}
-            columns = metadata_raw
-
-        # Parse metadata
-        metadata = [ColumnMetadata.from_dict(col) for col in columns]
-
-        # Parse status if present (not in fetch_results responses)
-        status = None
-        if "status" in data:
-            status = QueryStatus.from_dict(data["status"])
-
-        return cls(
-            data=data.get("data", []),
-            metadata=metadata,
-            returned_rows=data.get("returnedRows", 0),
-            status=status,
-        )
-
-    @classmethod
     def from_arrow_bytes(cls, raw: bytes, status: Optional[QueryStatus] = None) -> "QueryResponse":
         """
-        Create QueryResponse by parsing an Arrow IPC stream (v3 Arrow output format).
+        Create QueryResponse by parsing an Arrow IPC stream.
 
         The v3 API returns Arrow IPC stream bytes directly as the response body
         when the request's Accept header negotiates
-        application/vnd.apache.arrow.stream. Unlike the JSON body, this stream
-        never carries status — the caller parses that separately from the
-        x-hyperdb-status response header, as it does for the JSON path.
+        application/vnd.apache.arrow.stream. This stream never carries status —
+        the caller parses that separately from the x-hyperdb-status response
+        header.
 
         Args:
             raw: Raw Arrow IPC stream bytes (response.content)

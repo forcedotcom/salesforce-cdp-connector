@@ -5,7 +5,6 @@ This module handles type conversions between Data Cloud types and Python types,
 and implements DB-API 2.0 type objects.
 """
 
-import json
 from datetime import date, datetime, time
 from decimal import Decimal
 from typing import Any, Optional
@@ -67,7 +66,6 @@ DATACLOUD_TYPE_TO_DBAPI = {
     "float8": NUMBER,
     "oid": NUMBER,
     "char": STRING,
-    "json": STRING,
     # No DB-API type object maps cleanly onto a time-span: Hyper intervals
     # have no fixed month/day ratio, so convert_datacloud_value passes them
     # through unconverted rather than coercing to timedelta/DATETIME.
@@ -111,24 +109,22 @@ def convert_datacloud_value(
 
     try:
         # Varchar/char → str. char is physically indistinguishable from
-        # varchar over Arrow (both arrive as a plain STRING column) and is a
-        # plain string over JSON too, so it reuses the same conversion.
+        # varchar over Arrow (both arrive as a plain STRING column), so it
+        # reuses the same conversion.
         if normalized_type in ("varchar", "char"):
             return str(value)
 
         # Numeric → Decimal/int/float
         elif normalized_type == "numeric":
-            # If scale is 0, return as int (lossless for both wire formats:
-            # scale 0 has no fractional digits to lose)
+            # If scale is 0, return as int (lossless: scale 0 has no
+            # fractional digits to lose)
             if scale == 0:
                 return int(value)
             # Arrow's decimal128/decimal256 columns already decode to an
-            # exact Decimal (see QueryResponse.from_arrow_bytes) -- the
-            # float/Decimal coercion below exists only for the JSON wire
-            # format, which hands back a plain str/number with no exact
-            # representation of its own. Re-coercing an already-exact Arrow
-            # Decimal through float() here would throw away precision for
-            # no reason, so pass it through unchanged.
+            # exact Decimal (see QueryResponse.from_arrow_bytes). Re-coercing
+            # it through float() would throw away precision for no reason, so
+            # pass it through unchanged; the float/Decimal coercion below is
+            # only for values that arrive as plain str/number.
             elif isinstance(value, Decimal):
                 return value
             # If precision/scale not specified or low precision, use float
@@ -149,36 +145,21 @@ def convert_datacloud_value(
         elif normalized_type in ("float", "double", "float4", "float8"):
             return float(value)
 
-        # bytea → bytes, unchanged. Confirmed live that bytea only ever
-        # arrives via the Arrow output format (the JSON sink rejects it
-        # outright with a 501), where nanoarrow already decodes it to native
+        # bytea → bytes, unchanged. nanoarrow already decodes it to native
         # Python bytes -- no base64 decoding is needed here.
         elif normalized_type == "bytea":
             return value
 
-        # json → parsed Python object. Only reachable when output_format=
-        # "json": the v3 JSON body tags these columns "json" explicitly, and
-        # may hand back either an already-parsed dict/list or (for some
-        # columns) the raw JSON text as a string, so this normalizes both to
-        # the parsed value. str(value) is deliberately avoided: it would turn
-        # an already-parsed dict into its repr(), not JSON.
-        #
-        # Arrow has no distinct physical type for json -- it arrives tagged
+        # json has no distinct physical Arrow type: it arrives tagged
         # "varchar" like any other string column (see models.py's
         # _ARROW_TYPE_TO_DATACLOUD_TYPE comment) and is returned as the raw
-        # JSON text, unparsed. output_format="json" is required to get a
-        # parsed value for these columns.
-        elif normalized_type == "json":
-            if isinstance(value, str):
-                return json.loads(value)
-            return value
+        # JSON text, unparsed.
 
-        # interval → passed through unconverted. The wire representation
-        # differs by output format (JSON: ISO-8601 duration string, e.g.
-        # 'P1D'; Arrow: a raw (months, days, nanoseconds) tuple, confirmed
-        # live) and neither maps losslessly onto a Python stdlib type
-        # (timedelta cannot exactly represent month-based durations), so this
-        # is a deliberate, documented pass-through rather than a conversion.
+        # interval → passed through unconverted. Arrow delivers a raw
+        # (months, days, nanoseconds) tuple (confirmed live), which does not
+        # map losslessly onto a Python stdlib type (timedelta cannot exactly
+        # represent month-based durations), so this is a deliberate,
+        # documented pass-through rather than a conversion.
         elif normalized_type == "interval":
             return value
 

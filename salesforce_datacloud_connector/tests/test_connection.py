@@ -7,9 +7,11 @@ import threading
 from concurrent.futures import ThreadPoolExecutor
 from unittest.mock import Mock, patch
 
+import pyarrow as pa
 import pytest
 
 import salesforce_datacloud_connector as sfdc
+from tests._arrow_fixtures import build_arrow_ipc_bytes
 from tests._keys import TEST_RSA_PRIVATE_KEY_PEM
 from salesforce_datacloud_connector.connection import Connection
 from salesforce_datacloud_connector.cursor import Cursor
@@ -61,13 +63,14 @@ def test_create_multiple_cursors():
 def test_threads_share_connection_with_separate_cursors():
     """Concurrent queries on one connection keep each cursor's rows separate."""
     assert sfdc.threadsafety == 2
-    conn = Connection(create_mock_token_provider(), output_format="json")
+    conn = Connection(create_mock_token_provider())
     requests_started = threading.Barrier(8)
 
     def fake_request(method, url, headers=None, params=None, json=None, timeout=None):
         requests_started.wait(timeout=5)
         marker = json["sql"].split("'")[1]
         response = Mock(ok=True, status_code=200, text="")
+        response.content = build_arrow_ipc_bytes([pa.field("m", pa.string(), nullable=True)], [(marker,)])
         response.headers = {
             "x-hyperdb-status": jsonlib.dumps(
                 {
@@ -78,11 +81,6 @@ def test_threads_share_connection_with_separate_cursors():
                     "chunkCount": 1,
                 }
             )
-        }
-        response.json.return_value = {
-            "metadata": {"columns": [{"name": "m", "type": "varchar", "nullable": True}]},
-            "data": [[marker]],
-            "returnedRows": 1,
         }
         return response
 
@@ -401,14 +399,9 @@ def test_connect_client_credentials_requires_secret():
         )
 
 
-def test_connect_invalid_output_format_fails_before_any_network_call():
-    """connect() must reject an invalid output_format before constructing an
-    authenticator or performing any network I/O, not just later inside
-    DataCloudQueryClient.__init__ (which only runs after login)."""
-    from unittest.mock import patch
-
-    import pytest
-    import salesforce_datacloud_connector as sfdc
+def test_connect_rejects_output_format_keyword():
+    """output_format was removed: connect() always uses Arrow, so passing it
+    (even the former default "arrow") is a TypeError before any network I/O."""
     from salesforce_datacloud_connector.auth.oauth import UsernamePasswordAuthenticator
 
     with patch.object(
@@ -416,7 +409,7 @@ def test_connect_invalid_output_format_fails_before_any_network_call():
         "_fetch_new_token",
         side_effect=AssertionError("authenticator must not be reached"),
     ):
-        with pytest.raises(ValueError, match="output_format"):
+        with pytest.raises(TypeError, match="output_format"):
             sfdc.connect(
                 login_url="https://login.salesforce.com",
                 auth_type="username_password",
@@ -424,8 +417,14 @@ def test_connect_invalid_output_format_fails_before_any_network_call():
                 password="password",
                 client_id="client_id",
                 client_secret="client_secret",
-                output_format="xml",
+                output_format="arrow",
             )
+
+
+def test_connection_rejects_output_format_keyword():
+    """Connection no longer accepts an output_format argument."""
+    with pytest.raises(TypeError, match="output_format"):
+        Connection(create_mock_token_provider(), output_format="arrow")
 
 
 def test_connect_positional_args_backward_compatible():

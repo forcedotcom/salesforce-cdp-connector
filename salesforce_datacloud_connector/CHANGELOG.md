@@ -32,9 +32,8 @@ changes ship as a beta until the design review is complete.
   returning `-1`. It remains `-1` before any query is executed and is reset to
   `-1` at the start of each `execute()` so a failed execution does not report a
   stale count (DB-API 2.0 / PEP 249).
-- Query results now default to the Arrow IPC wire format instead of JSON.
-  Pass `output_format="json"` to `connect()` to opt back into the previous
-  JSON behavior.
+- Query results use the Arrow IPC wire format instead of JSON. The JSON
+  format is no longer available (see Removed).
 - `pyarrow` moved out of the `[pandas]` optional dependency extra into the
   dev dependency group — it is only needed to build Arrow IPC test fixtures,
   not by `pandas` support at runtime (`nanoarrow` is the runtime Arrow
@@ -43,6 +42,13 @@ changes ship as a beta until the design review is complete.
   so a future major `nanoarrow` release can't silently change how Arrow
   values map to Python types (e.g. timestamps) underneath
   `convert_datacloud_value` without a deliberate version bump here.
+
+### Removed
+- **Breaking:** the `output_format` argument of `connect()` and `Connection`,
+  together with the JSON result parsing. Results are always Arrow, so passing
+  `output_format` (including `"arrow"`) now raises `TypeError`; drop the
+  argument. `ColumnMetadata.from_dict` and `QueryResponse.from_dict` were
+  removed with it. A `json` column is returned as its JSON text.
 
 ## 2.0.0b1 — Beta release (TBD)
 

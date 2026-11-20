@@ -8,10 +8,9 @@ This module implements the v3 REST transport layer for the Query API:
 - cancel_query: DELETE /api/v3/query/{id}
 - poll_until_complete: blocking poll until a query completes
 
-Output format: execute_query and fetch_results negotiate their response body
-format (Arrow IPC stream or JSON) via the Accept header, selected by the
-client's output_format. get_query_status has no Arrow variant per the v3
-spec and always requests JSON.
+Output format: execute_query and fetch_results request the Arrow IPC stream
+via the Accept header. get_query_status has no Arrow variant per the v3 spec
+and always requests JSON.
 """
 
 import json
@@ -65,7 +64,6 @@ class DataCloudQueryClient:
         workload: Optional[str] = None,
         user_agent: Optional[str] = None,
         query_settings: Optional[Dict[str, str]] = None,
-        output_format: str = "arrow",
         on_unauthorized: Optional[Callable[[], None]] = None,
         http: Optional[HttpOptions] = None,
     ):
@@ -82,22 +80,12 @@ class DataCloudQueryClient:
             query_settings: Connection-wide default query settings (e.g. {"time_zone": "UTC"}),
                 merged into every execute_query() call's "settings" field. See
                 https://tableau.github.io/hyper-db/docs/hyper-api/connection#connection-settings
-            output_format: "arrow" (default) or "json". Selects the Accept
-                header used for execute_query/fetch_results. get_query_status
-                always requests JSON regardless of this setting, since v3 has
-                no Arrow variant for the status-only endpoint.
             on_unauthorized: Optional callback invoked when the API answers 401,
                 before the request is retried once with a fresh token from
                 auth_token_getter (typically the token provider's
                 invalidate_token). Without it, a 401 is raised immediately.
             http: Transport options (session, timeout, TLS verification, proxies)
-
-        Raises:
-            ValueError: If output_format is not "arrow" or "json"
         """
-        if output_format not in ("arrow", "json"):
-            raise ValueError(f"Invalid output_format: {output_format!r}. Must be 'arrow' or 'json'")
-
         self.tenant_endpoint = tenant_endpoint.rstrip("/")
         self.auth_token_getter = auth_token_getter
         self._on_unauthorized = on_unauthorized
@@ -106,8 +94,6 @@ class DataCloudQueryClient:
         self.workload = workload
         self.user_agent = user_agent
         self.default_settings: Dict[str, str] = dict(query_settings) if query_settings else {}
-        self._output_format = output_format
-        self._data_accept_header = _ARROW_MEDIA_TYPE if output_format == "arrow" else _JSON_MEDIA_TYPE
         self._base_url = f"{self.tenant_endpoint}/api/v3/query"
 
     def _build_user_agent(self) -> str:
@@ -428,7 +414,7 @@ class DataCloudQueryClient:
         if merged_settings:
             request_body["settings"] = merged_settings
 
-        response = self._make_request("POST", self._base_url, json_data=request_body, accept=self._data_accept_header)
+        response = self._make_request("POST", self._base_url, json_data=request_body, accept=_ARROW_MEDIA_TYPE)
 
         # Parse status from x-hyperdb-status header (v3) first. The header carries
         # the queryId/rowCount/completionStatus the cursor relies on, and must be
@@ -446,13 +432,10 @@ class DataCloudQueryClient:
         # any rows yet (still running) rather than a malformed response -- unlike an
         # empty-but-valid IPC stream (schema message present, zero rows), which
         # from_arrow_bytes handles on its own.
-        if self._output_format == "arrow":
-            if not response.content:
-                query_response = QueryResponse(data=[], metadata=[], returned_rows=0)
-            else:
-                query_response = QueryResponse.from_arrow_bytes(response.content)
+        if not response.content:
+            query_response = QueryResponse(data=[], metadata=[], returned_rows=0)
         else:
-            query_response = QueryResponse.from_dict(response.json())
+            query_response = QueryResponse.from_arrow_bytes(response.content)
 
         query_response.status = QueryStatus.from_dict(status_data)
 
@@ -517,16 +500,14 @@ class DataCloudQueryClient:
         }
 
         try:
-            response = self._make_request("GET", url, params=params, accept=self._data_accept_header)
-            if self._output_format == "arrow":
-                # Same zero-length-body case as execute_query: under ADAPTIVE
-                # transfer mode, a chunk that hasn't produced any Arrow binary
-                # part yet still comes back 200 with an empty body rather than
-                # a parseable (even if empty) IPC stream.
-                if not response.content:
-                    return QueryResponse(data=[], metadata=[], returned_rows=0)
-                return QueryResponse.from_arrow_bytes(response.content)
-            return QueryResponse.from_dict(response.json())
+            response = self._make_request("GET", url, params=params, accept=_ARROW_MEDIA_TYPE)
+            # Same zero-length-body case as execute_query: under ADAPTIVE
+            # transfer mode, a chunk that hasn't produced any Arrow binary
+            # part yet still comes back 200 with an empty body rather than
+            # a parseable (even if empty) IPC stream.
+            if not response.content:
+                return QueryResponse(data=[], metadata=[], returned_rows=0)
+            return QueryResponse.from_arrow_bytes(response.content)
         except Exception as e:
             # Handle "Request out of range" gracefully (400 error)
             if "out of range" in str(e).lower():

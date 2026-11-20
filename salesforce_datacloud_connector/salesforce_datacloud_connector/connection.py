@@ -29,7 +29,6 @@ class Connection:
         workload: Optional[str] = None,
         user_agent: Optional[str] = None,
         query_settings: Optional[Dict[str, str]] = None,
-        output_format: str = "arrow",
         http: Optional[HttpOptions] = None,
     ):
         """
@@ -44,8 +43,6 @@ class Connection:
             query_settings: Connection-wide default query settings (e.g. {"time_zone": "UTC"}),
                 merged into every cursor.execute() call on this connection. See
                 https://tableau.github.io/hyper-db/docs/hyper-api/connection#connection-settings
-            output_format: "arrow" (default) or "json". Selects the query
-                result wire format negotiated with off-core Query v3.
             http: Transport options (session, timeout, TLS verification, proxies)
                 for query requests
 
@@ -69,7 +66,6 @@ class Connection:
             workload=workload,
             user_agent=user_agent,
             query_settings=query_settings,
-            output_format=output_format,
         )
 
     def _check_closed(self):

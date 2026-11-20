@@ -90,7 +90,6 @@ def connect(
     target_org: Optional[str] = None,
     user_agent: Optional[str] = None,
     query_settings: Optional[Dict[str, str]] = None,
-    output_format: str = "arrow",
     cdp_token: Optional[str] = None,
     tenant_endpoint: Optional[str] = None,
     timeout: float = HttpOptions.DEFAULT_TIMEOUT_SECONDS,
@@ -130,10 +129,6 @@ def connect(
         query_settings: Connection-wide default query settings (e.g. {"time_zone": "UTC"}),
             merged into every cursor.execute() call on this connection. See
             https://tableau.github.io/hyper-db/docs/hyper-api/connection#connection-settings
-        output_format: "arrow" (default) or "json". Selects the query result
-            wire format negotiated with off-core Query v3. Arrow is the
-            recommended default; "json" remains available as an opt-in
-            fallback.
         timeout: Per-request HTTP timeout in seconds, applied to every call the
             connection makes (login, token exchange, query submission, status
             polls and row fetches). Default 300 (5 minutes). The server may
@@ -148,7 +143,7 @@ def connect(
 
     Raises:
         ValueError: If required parameters are missing for the selected auth type,
-            if output_format is not "arrow" or "json", or if timeout is not positive
+            or if timeout is not positive
         OperationalError: If authentication fails
 
     Examples:
@@ -180,13 +175,6 @@ def connect(
             refresh_token="refresh_token_here"
         )
     """
-    # Validate output_format before any network I/O (authentication happens
-    # below via the token exchanger). Without this, an invalid output_format
-    # would only surface after a real login round-trip, inside
-    # DataCloudQueryClient.__init__ via Connection.__init__.
-    if output_format not in ("arrow", "json"):
-        raise ValueError(f"Invalid output_format: {output_format!r}. Must be 'arrow' or 'json'")
-
     # One Session (and one timeout) shared by the OAuth, token-exchange and query calls.
     http = HttpOptions(timeout=timeout)
 
@@ -200,7 +188,6 @@ def connect(
             workload=workload,
             user_agent=user_agent,
             query_settings=query_settings,
-            output_format=output_format,
             http=http,
         )
 
@@ -276,7 +263,6 @@ def connect(
         workload=workload,
         user_agent=user_agent,
         query_settings=query_settings,
-        output_format=output_format,
         http=http,
     )
 
