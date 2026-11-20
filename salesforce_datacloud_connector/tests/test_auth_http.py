@@ -195,7 +195,7 @@ def test_second_401_is_raised_without_looping():
     on_unauthorized = Mock()
     client = _client(on_unauthorized, ["a", "b", "c"])
 
-    with pytest.raises(OperationalError, match="still bad"):
+    with pytest.raises(OperationalError, match="HTTP 401"):
         client._make_request("GET", QUERY_URL)
 
     on_unauthorized.assert_called_once()

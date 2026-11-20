@@ -452,6 +452,24 @@ except sfdc.NotSupportedError as e:
     print(f"Operation not supported: {e}")
 ```
 
+Query errors carry the server's message and SQLSTATE, laid out as in the JDBC driver
+(`Failed to execute query: <message>`, then `SQLSTATE: ...` and, when known, `QUERY-ID: ...`).
+A failure without server error information gets the generic SQLSTATE `HY000` and the HTTP status line. The SQLSTATE class picks
+the exception (for example `42xxx` raises `ProgrammingError`, `22xxx`
+`DataError`, `23xxx` `IntegrityError`), and the exception exposes `e.sqlstate`,
+`e.http_status` and `e.details` (the server's `customerDetail`, `position` and
+`errorSource` when present):
+
+```python
+try:
+    cursor.execute("SELECT * FROM no_such_table")
+except sfdc.ProgrammingError as e:
+    print(e.sqlstate)  # 42P01
+    print(e)
+    # Failed to execute query: table "no_such_table" does not exist [TraceId: ...]
+    # SQLSTATE: 42P01
+```
+
 ### `fetch_df()` extension
 
 `cursor.fetch_df()` returns a `pandas.DataFrame` containing all remaining rows
