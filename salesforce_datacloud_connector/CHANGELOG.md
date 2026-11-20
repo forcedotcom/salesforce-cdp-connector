@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.1](https://github.com/forcedotcom/salesforce-cdp-connector/compare/salesforce-datacloud-connector-2.0.0...salesforce-datacloud-connector-2.0.1) (2026-11-20)
+
+
+### Bug Fixes
+
+* raise default request timeout to 5 minutes and never retry the query POST ([#78](https://github.com/forcedotcom/salesforce-cdp-connector/issues/78)) ([898214e](https://github.com/forcedotcom/salesforce-cdp-connector/commit/898214ee22a8214603c017b5c998e5af178f748e))
+* stop silently truncating query results at 1,000,000 rows ([#77](https://github.com/forcedotcom/salesforce-cdp-connector/issues/77)) ([6cbf272](https://github.com/forcedotcom/salesforce-cdp-connector/commit/6cbf272e901c5573391cade818ed51653e47a5ac))
+* surface the server error message and SQLSTATE from the error response ([#79](https://github.com/forcedotcom/salesforce-cdp-connector/issues/79)) ([f995c6c](https://github.com/forcedotcom/salesforce-cdp-connector/commit/f995c6c8358c428c8e1df3e95e058e2ce35fe445))
+
 ## 2.0.0b2 — Beta release
 
 Note: `2.0.0` was published to PyPI prematurely and has been yanked. These
