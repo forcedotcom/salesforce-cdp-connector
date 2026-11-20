@@ -26,10 +26,10 @@ class TestConvertLowercaseV3Types:
         assert convert_datacloud_value("hello", "varchar") == "hello"
         assert isinstance(convert_datacloud_value("hello", "varchar"), str)
 
-    def test_numeric_scale_zero_is_int(self):
+    def test_numeric_scale_zero_is_decimal(self):
         result = convert_datacloud_value("42", "numeric", scale=0)
-        assert result == 42
-        assert isinstance(result, int)
+        assert result == Decimal("42")
+        assert isinstance(result, Decimal)
 
     def test_numeric_low_precision_is_float(self):
         result = convert_datacloud_value("3.14", "numeric", precision=10, scale=2)
@@ -51,10 +51,14 @@ class TestConvertLowercaseV3Types:
         assert result == value
         assert isinstance(result, Decimal)
 
-    def test_numeric_decimal_input_with_scale_zero_is_int(self):
-        result = convert_datacloud_value(Decimal("42"), "numeric", scale=0)
-        assert result == 42
-        assert isinstance(result, int)
+    def test_numeric_decimal_input_with_scale_zero_is_preserved(self):
+        value = Decimal("123456789012345678")
+        result = convert_datacloud_value(value, "numeric", scale=0)
+        assert result == value
+        assert isinstance(result, Decimal)
+
+    def test_numeric_scale_zero_keeps_a_negative_value(self):
+        assert convert_datacloud_value(Decimal("-7"), "numeric", scale=0) == Decimal("-7")
 
     def test_integer_and_bigint_are_int(self):
         assert convert_datacloud_value("7", "integer") == 7
@@ -164,8 +168,8 @@ class TestConvertCapitalizedTypesRegression:
 
     def test_capitalized_numeric_scale_zero(self):
         result = convert_datacloud_value("42", "Numeric", scale=0)
-        assert result == 42
-        assert isinstance(result, int)
+        assert result == Decimal("42")
+        assert isinstance(result, Decimal)
 
     def test_capitalized_timestamptz(self):
         result = convert_datacloud_value("2024-01-15T10:30:00+00:00", "TimestampTZ")

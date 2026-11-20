@@ -118,10 +118,11 @@ def convert_datacloud_value(
 
         # Numeric → Decimal/int/float
         elif normalized_type == "numeric":
-            # If scale is 0, return as int (lossless for both wire formats:
-            # scale 0 has no fractional digits to lose)
+            # A scale-0 numeric stays a Decimal, like every other numeric
+            # column, so a column never changes Python type with its scale
+            # and values such as numeric(18,0) keep their exact representation.
             if scale == 0:
-                return int(value)
+                return value if isinstance(value, Decimal) else Decimal(str(value))
             # Arrow's decimal128/decimal256 columns already decode to an
             # exact Decimal (see QueryResponse.from_arrow_bytes) -- the
             # float/Decimal coercion below exists only for the JSON wire
@@ -222,7 +223,7 @@ def convert_datacloud_value(
         else:
             return value
 
-    except (ValueError, TypeError, OverflowError) as e:
+    except (ValueError, TypeError, ArithmeticError) as e:
         raise ValueError(f"Cannot convert value {value!r} to type {datacloud_type}: {e}") from e
 
 
