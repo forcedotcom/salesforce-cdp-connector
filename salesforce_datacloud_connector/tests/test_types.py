@@ -246,3 +246,7 @@ class TestBuildDescriptionTuple:
         assert desc[4] == 18
         assert desc[5] == 2
         assert desc[6] is False
+
+
+def test_convert_array_value_passes_through():
+    assert convert_datacloud_value([1, 2], "array") == [1, 2]
