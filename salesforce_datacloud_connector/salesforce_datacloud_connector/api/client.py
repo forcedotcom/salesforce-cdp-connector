@@ -15,7 +15,6 @@ spec and always requests JSON.
 """
 
 import json
-import re
 import time
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
@@ -25,12 +24,7 @@ from ..exceptions import OperationalError, ProgrammingError, map_http_error_to_e
 from ..http_options import HttpOptions
 from ..types import infer_sql_parameter_type
 from .models import QueryResponse, QueryStatus
-
-# Matches a :name placeholder while ignoring PostgreSQL ::type casts. The
-# negative lookbehind (?<![:\w]) rejects the second colon of "::" and any
-# colon glued to an identifier, so "value::regclass" is left untouched but
-# "= :kind" is captured.
-_NAMED_PARAM_RE = re.compile(r"(?<![:\w]):(\w+)")
+from .sql_params import pick_name, rewrite_named_parameters
 
 _JSON_MEDIA_TYPE = "application/json"
 _ARROW_MEDIA_TYPE = "application/vnd.apache.arrow.stream"
@@ -351,25 +345,39 @@ class DataCloudQueryClient:
 
         Raises:
             ProgrammingError: If the SQL references a :name absent from params
+                (including when params is empty), or mixes :name and ? placeholders
         """
-        if not params:
+        if not params and ":" not in sql:
             return sql, []
+        params = params or {}
 
-        # No :name placeholders → qmark-style SQL: positional array from dict order.
-        if not _NAMED_PARAM_RE.search(sql):
+        def _resolve(name: str, shorter: List[str]) -> str:
+            return pick_name(name, shorter, params)
+
+        new_sql, names, has_qmark = rewrite_named_parameters(sql, _resolve)
+
+        if names and has_qmark:
+            raise ProgrammingError(
+                "Cannot mix named (:name) and positional (?) placeholders in one query; use one style"
+            )
+
+        # No :name placeholders but a ? placeholder → qmark-style SQL: positional
+        # array from dict order.
+        if not names and has_qmark:
             return sql, [self._param_entry(v) for v in params.values()]
 
+        # Neither: the SQL takes no parameters (a name that only appears inside a
+        # string or comment is not one), so the unused values are ignored, as
+        # with other drivers' named paramstyle.
+        if not names:
+            return sql, []
+
         sql_params: List[Dict[str, Any]] = []
-
-        def _replace(match: "re.Match") -> str:
-            name = match.group(1)
+        for name in names:
             if name not in params:
-                raise ProgrammingError(f"No value supplied for named parameter ':{name}'")
+                hint = " (write ':a - 1' with spaces for subtraction)" if "-" in name else ""
+                raise ProgrammingError(f"No value supplied for named parameter ':{name}'{hint}")
             sql_params.append(self._param_entry(params[name]))
-            return "?"
-
-        # re.sub invokes _replace left-to-right, so sql_params ends up in SQL order.
-        new_sql = _NAMED_PARAM_RE.sub(_replace, sql)
         return new_sql, sql_params
 
     def _merge_settings(self, settings: Optional[Dict[str, str]]) -> Dict[str, str]:
