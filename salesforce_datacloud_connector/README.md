@@ -411,7 +411,12 @@ This connector follows
 - `fetchmany(size=cursor.arraysize)` — fetch up to `size` rows.
 - `fetchall()` — fetch all remaining rows.
 - `close()` — close the cursor.
-- `cancel()` — cancel a running query (extension).
+- `cancel()` — cancel a running query (extension). Safe to call from another
+  thread while `execute()` is running. The server returns a query id only when
+  the initial request returns (up to about 60 seconds for a long query), so an
+  earlier `cancel()` takes effect then: a still-running query is cancelled on
+  the server and `execute()` raises `OperationalError`. A query that finishes
+  inside that window is cancelled locally only; its result is discarded.
 - `fetch_df()` — fetch results as a pandas DataFrame (extension; requires the
   `[pandas]` extra).
 

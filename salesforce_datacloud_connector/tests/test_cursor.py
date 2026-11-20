@@ -4,12 +4,20 @@ Tests for DB-API 2.0 Cursor.
 
 from unittest.mock import Mock
 
+import threading
+
 import pytest
 
 from salesforce_datacloud_connector.api.client import DataCloudQueryClient
 from salesforce_datacloud_connector.api.models import ColumnMetadata, QueryResponse, QueryStatus
 from salesforce_datacloud_connector.cursor import Cursor
-from salesforce_datacloud_connector.exceptions import DataError, InterfaceError, NotSupportedError
+from salesforce_datacloud_connector.exceptions import (
+    DataError,
+    InterfaceError,
+    NotSupportedError,
+    OperationalError,
+    ProgrammingError,
+)
 
 
 def create_mock_client():
@@ -200,6 +208,63 @@ def test_rowcount_reset_after_failed_reexecute_server_error():
         cursor.execute("SELECT bad syntax")
 
     assert cursor.rowcount == -1
+
+
+def _paged_response():
+    """First page of a 10-row result: 3 rows buffered, 7 still on the server."""
+    return QueryResponse(
+        data=[[1], [2], [3]],
+        metadata=[ColumnMetadata(name="a", type="Numeric", scale=0)],
+        returned_rows=3,
+        status=QueryStatus(
+            query_id="q1",
+            completion_status="ResultsProduced",
+            progress=1.0,
+            row_count=10,
+            chunk_count=2,
+        ),
+    )
+
+
+def test_failed_reexecute_server_error_clears_previous_result():
+    """after execute() raises, the previous result must not stay readable."""
+    client = create_mock_client()
+    cursor = Cursor(client)
+    client.execute_query.return_value = _paged_response()
+
+    cursor.execute("SELECT * FROM generate_series(1, 10) AS a")
+    assert cursor.fetchone() == (1,)
+
+    client.execute_query.side_effect = ProgrammingError("syntax error")
+    with pytest.raises(ProgrammingError):
+        cursor.execute("SELEC 1")
+
+    assert cursor.rowcount == -1
+    assert cursor.description is None
+    with pytest.raises(InterfaceError):
+        cursor.fetchone()
+    with pytest.raises(InterfaceError):
+        cursor.fetchall()
+    client.fetch_results.assert_not_called()
+
+
+def test_failed_reexecute_dml_guard_clears_previous_result():
+    """a DML-guard rejection must also discard the previous result."""
+    client = create_mock_client()
+    cursor = Cursor(client)
+    client.execute_query.return_value = _paged_response()
+
+    cursor.execute("SELECT * FROM generate_series(1, 10) AS a")
+    assert cursor.fetchone() == (1,)
+
+    with pytest.raises(NotSupportedError):
+        cursor.execute("DELETE FROM t")
+
+    assert cursor.rowcount == -1
+    assert cursor.description is None
+    with pytest.raises(InterfaceError):
+        cursor.fetchall()
+    client.fetch_results.assert_not_called()
 
 
 def test_execute_sync_query():
@@ -593,6 +658,102 @@ def test_cancel_query():
     client.cancel_query.assert_called_once_with("q1")
 
 
+def _slow_response(state):
+    return QueryResponse(
+        data=[],
+        metadata=[],
+        returned_rows=0,
+        status=QueryStatus(query_id="q9", completion_status=state, progress=0.0, row_count=0, chunk_count=0),
+    )
+
+
+def test_cancel_during_execute_cancels_the_query_once_its_id_is_known():
+    """cancel() before the POST returns is applied when the query id arrives."""
+    client = create_mock_client()
+    cursor = Cursor(client)
+    posted = threading.Event()
+    release = threading.Event()
+
+    def blocking_post(*args, **kwargs):
+        posted.set()
+        assert release.wait(5)
+        return _slow_response("Running")
+
+    client.execute_query.side_effect = blocking_post
+    errors = []
+
+    def run():
+        try:
+            cursor.execute("SELECT slow")
+        except Exception as exc:  # noqa: BLE001
+            errors.append(exc)
+
+    thread = threading.Thread(target=run)
+    thread.start()
+    assert posted.wait(5)
+    cursor.cancel()  # no query id yet: must not raise
+    client.cancel_query.assert_not_called()
+    release.set()
+    thread.join(5)
+
+    assert len(errors) == 1 and isinstance(errors[0], OperationalError)
+    client.cancel_query.assert_called_once_with("q9")
+    client.poll_until_complete.assert_not_called()
+    assert cursor.description is None
+    with pytest.raises(InterfaceError):
+        cursor.fetchone()
+
+
+def test_cancel_during_execute_of_a_finished_query_discards_the_result():
+    client = create_mock_client()
+    cursor = Cursor(client)
+
+    def post(*args, **kwargs):
+        cursor.cancel()
+        return _slow_response("ResultsProduced")
+
+    client.execute_query.side_effect = post
+    with pytest.raises(OperationalError):
+        cursor.execute("SELECT 1")
+    client.cancel_query.assert_not_called()
+    assert cursor.rowcount == -1
+
+
+def test_cancel_request_does_not_leak_into_the_next_execute():
+    client = create_mock_client()
+    cursor = Cursor(client)
+    calls = []
+
+    def post(*args, **kwargs):
+        if not calls:
+            cursor.cancel()
+        calls.append(1)
+        return _slow_response("ResultsProduced")
+
+    client.execute_query.side_effect = post
+    with pytest.raises(OperationalError):
+        cursor.execute("SELECT 1")
+    cursor.execute("SELECT 1")
+    assert cursor.rowcount == 0
+
+
+def test_cancel_with_nothing_executing_raises():
+    cursor = Cursor(create_mock_client())
+    with pytest.raises(InterfaceError):
+        cursor.cancel()
+
+
+def test_cancel_after_failed_execute_raises():
+    client = create_mock_client()
+    cursor = Cursor(client)
+    client.execute_query.side_effect = ProgrammingError("syntax error")
+    with pytest.raises(ProgrammingError):
+        cursor.execute("SELEC 1")
+    with pytest.raises(InterfaceError):
+        cursor.cancel()
+    client.cancel_query.assert_not_called()
+
+
 def test_context_manager():
     """Test cursor as context manager."""
     client = create_mock_client()
@@ -806,3 +967,31 @@ def test_fetch_with_undecodable_value_raises_data_error(column_type, value):
 
     with pytest.raises(DataError):
         cursor.fetchall()
+
+
+def test_async_result_is_fetched_from_offset_zero_after_a_previous_result():
+    """A cursor that already read rows must not carry its offset into an async result."""
+    client = create_mock_client()
+    cursor = Cursor(client)
+    meta = [ColumnMetadata(name="a", type="Numeric", scale=0)]
+
+    def status(row_count, state):
+        return QueryStatus(query_id="q", completion_status=state, progress=1.0, row_count=row_count, chunk_count=1)
+
+    client.execute_query.return_value = QueryResponse(
+        data=[[1], [2]], metadata=meta, returned_rows=2, status=status(2, "ResultsProduced")
+    )
+    cursor.execute("SELECT 1")
+    assert cursor.fetchall() == [(1,), (2,)]
+
+    client.execute_query.return_value = QueryResponse(
+        data=[], metadata=[], returned_rows=0, status=status(5, "Running")
+    )
+    client.poll_until_complete.return_value = status(5, "Finished")
+    client.fetch_results.return_value = QueryResponse(
+        data=[[i] for i in range(5)], metadata=meta, returned_rows=5, status=status(5, "Finished")
+    )
+    cursor.execute("SELECT slow")
+
+    assert client.fetch_results.call_args.kwargs["offset"] == 0
+    assert cursor.fetchall() == [(i,) for i in range(5)]
